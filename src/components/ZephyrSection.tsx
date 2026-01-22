@@ -2,13 +2,18 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Shield, Zap, Users, Lock, Cpu, Globe, Bitcoin, Eye, EyeOff, 
   ArrowRight, ChevronDown, CheckCircle, TrendingUp, Activity,
-  FileText, ArrowDownLeft, ArrowUpRight
+  FileText, ArrowDownLeft, ArrowUpRight, Settings, Search, Command,
+  Bell, Sparkles
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PrivacyScoreGauge } from "./zephyr/PrivacyScoreGauge";
 import { TransactionPreview } from "./zephyr/TransactionPreview";
 import { AnonymitySetViz } from "./zephyr/AnonymitySetViz";
+import { ToggleSetting } from "./zephyr/ToggleSetting";
+import { CommandPalette, useCommandPalette } from "./zephyr/CommandPalette";
+import { NotificationBell } from "./zephyr/NotificationBell";
+import { ProgressBar } from "./zephyr/LoadingStates";
 
 const features = [
   {
@@ -71,6 +76,7 @@ const tabs = [
   { id: "deposit", label: "Deposit", icon: ArrowDownLeft },
   { id: "withdraw", label: "Withdraw", icon: ArrowUpRight },
   { id: "dashboard", label: "Dashboard", icon: Activity },
+  { id: "settings", label: "Settings", icon: Settings },
 ];
 
 export function ZephyrSection() {
@@ -78,9 +84,31 @@ export function ZephyrSection() {
   const [selectedPrivacy, setSelectedPrivacy] = useState(1);
   const [showSecret, setShowSecret] = useState(false);
   const [activeTab, setActiveTab] = useState("deposit");
+  const [depositAmount, setDepositAmount] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const { isOpen: isCommandOpen, setIsOpen: setCommandOpen } = useCommandPalette();
+
+  const handleDeposit = () => {
+    setIsProcessing(true);
+    setProgress(0);
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setIsProcessing(false);
+          return 100;
+        }
+        return prev + 10;
+      });
+    }, 300);
+  };
 
   return (
     <section id="zephyr" className="py-24 bg-gradient-to-b from-background via-primary/5 to-background relative overflow-hidden">
+      {/* Command Palette */}
+      <CommandPalette isOpen={isCommandOpen} onClose={() => setCommandOpen(false)} />
+
       {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-1/2 -right-1/4 w-[800px] h-[800px] bg-gradient-radial from-primary/10 via-transparent to-transparent rounded-full blur-3xl" />
@@ -111,9 +139,24 @@ export function ZephyrSection() {
               On Starknet
             </span>
           </h2>
-          <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
+          <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-8">
             Mix your Bitcoin with zero-knowledge STARK proofs. Non-custodial, trust-minimized, quantum-safe.
           </p>
+          
+          {/* Quick Actions Bar */}
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            <button
+              onClick={() => setCommandOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-muted border border-border hover:border-primary/50 transition-colors"
+            >
+              <Search className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Quick search...</span>
+              <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 rounded bg-background text-xs text-muted-foreground border border-border">
+                <Command className="w-3 h-3" />K
+              </kbd>
+            </button>
+            <NotificationBell />
+          </div>
         </motion.div>
 
         {/* Stats Row */}
@@ -139,9 +182,7 @@ export function ZephyrSection() {
               whileHover={{ scale: 1.02, y: -4 }}
               className="glass-card p-6 text-center group hover:border-primary/50 transition-all relative overflow-hidden"
             >
-              {/* Hover gradient */}
               <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-              
               <stat.icon className="w-6 h-6 text-primary mx-auto mb-3 group-hover:scale-110 transition-transform relative z-10" />
               <div className="text-2xl md:text-3xl font-bold text-secondary mb-1 relative z-10">{stat.value}</div>
               <div className="text-sm text-muted-foreground mb-2 relative z-10">{stat.label}</div>
@@ -171,9 +212,7 @@ export function ZephyrSection() {
               onMouseLeave={() => setActiveFeature(null)}
               className="glass-card p-6 group hover:border-primary/50 transition-all duration-300 cursor-pointer relative overflow-hidden"
             >
-              {/* Gradient background on hover */}
               <div className={`absolute inset-0 bg-gradient-to-br ${feature.gradient} opacity-0 group-hover:opacity-5 transition-opacity duration-300`} />
-              
               <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-lg`}>
                 <feature.icon className="w-6 h-6 text-white" />
               </div>
@@ -213,24 +252,27 @@ export function ZephyrSection() {
           className="glass-card p-0 max-w-6xl mx-auto overflow-hidden"
         >
           {/* Tab Header */}
-          <div className="flex items-center justify-between border-b border-border px-6 py-4 bg-background/50">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-border px-6 py-4 bg-background/50 gap-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
                 <Bitcoin className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h3 className="text-xl font-bold">Privacy Mixer Demo</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xl font-bold">Privacy Mixer</h3>
+                  <Sparkles className="w-4 h-4 text-secondary" />
+                </div>
                 <p className="text-sm text-muted-foreground">Experience ZK-private mixing</p>
               </div>
             </div>
             
             {/* Tab Navigation */}
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-background border border-border">
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-background border border-border overflow-x-auto">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${
                     activeTab === tab.id
                       ? "bg-primary text-primary-foreground shadow-md"
                       : "hover:bg-muted text-muted-foreground"
@@ -254,71 +296,87 @@ export function ZephyrSection() {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 20 }}
+                    className="space-y-6"
                   >
-                    <label className="block text-sm font-medium mb-3">Select Privacy Level</label>
-                    <div className="space-y-3">
-                      {privacyLevels.map((level, i) => (
-                        <motion.button
-                          key={i}
-                          onClick={() => setSelectedPrivacy(i)}
-                          whileHover={{ scale: 1.01 }}
-                          whileTap={{ scale: 0.99 }}
-                          className={`w-full p-4 rounded-xl border-2 transition-all text-left relative overflow-hidden ${
-                            selectedPrivacy === i
-                              ? "border-primary bg-primary/5"
-                              : "border-border hover:border-primary/50"
-                          }`}
-                        >
-                          {selectedPrivacy === i && (
-                            <motion.div
-                              layoutId="privacy-indicator"
-                              className="absolute inset-0 bg-gradient-to-r from-primary/10 to-transparent"
-                            />
-                          )}
-                          <div className="relative z-10">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <Shield className={`w-5 h-5 ${selectedPrivacy === i ? 'text-primary' : 'text-muted-foreground'}`} />
-                                <span className="font-bold">{level.level} Privacy</span>
-                              </div>
-                              {selectedPrivacy === i && (
-                                <motion.div
-                                  initial={{ scale: 0 }}
-                                  animate={{ scale: 1 }}
-                                  className="w-5 h-5 rounded-full bg-primary flex items-center justify-center"
-                                >
-                                  <CheckCircle className="w-3 h-3 text-white" />
-                                </motion.div>
-                              )}
-                            </div>
-                            <div className="text-sm text-muted-foreground mb-1">
-                              {level.delay} delay · {level.users} users · {level.fee} fee
-                            </div>
-                            <div className="text-xs text-muted-foreground">{level.description}</div>
-                          </div>
-                        </motion.button>
-                      ))}
-                    </div>
-
-                    {/* Commitment Display */}
-                    <div className="mt-6 space-y-4">
-                      <div className="p-4 rounded-xl bg-background/50 border border-border">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm text-muted-foreground">Secret Hash</span>
-                          <button
-                            onClick={() => setShowSecret(!showSecret)}
-                            className="text-primary hover:text-primary/80 p-1 rounded transition-colors"
-                          >
-                            {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                        <div className="font-mono text-xs break-all p-2 rounded bg-muted/30">
-                          {showSecret
-                            ? "0x7a3f8c4b2e1d9f6a5c8b7e4d3f2a1b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3"
-                            : "••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••"}
-                        </div>
+                    {/* Amount Input */}
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Deposit Amount</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          value={depositAmount}
+                          onChange={(e) => setDepositAmount(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full px-4 py-4 pr-16 bg-background border border-border rounded-xl focus:border-primary focus:outline-none text-2xl font-mono"
+                        />
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">
+                          BTC
+                        </span>
+                      </div>
+                      <div className="flex justify-between mt-2 text-sm text-muted-foreground">
+                        <span>Min: 0.001 BTC</span>
+                        <span>Max: 10 BTC</span>
                       </div>
                     </div>
+
+                    {/* Privacy Level Selection */}
+                    <div>
+                      <label className="block text-sm font-medium mb-3">Privacy Level</label>
+                      <div className="space-y-3">
+                        {privacyLevels.map((level, i) => (
+                          <motion.button
+                            key={i}
+                            onClick={() => setSelectedPrivacy(i)}
+                            whileHover={{ scale: 1.01 }}
+                            whileTap={{ scale: 0.99 }}
+                            className={`w-full p-4 rounded-xl border-2 transition-all text-left relative overflow-hidden ${
+                              selectedPrivacy === i
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-primary/50"
+                            }`}
+                          >
+                            {selectedPrivacy === i && (
+                              <motion.div
+                                layoutId="privacy-indicator"
+                                className="absolute inset-0 bg-gradient-to-r from-primary/10 to-transparent"
+                              />
+                            )}
+                            <div className="relative z-10">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <Shield className={`w-5 h-5 ${selectedPrivacy === i ? 'text-primary' : 'text-muted-foreground'}`} />
+                                  <span className="font-bold">{level.level} Privacy</span>
+                                </div>
+                                {selectedPrivacy === i && (
+                                  <motion.div
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    className="w-5 h-5 rounded-full bg-primary flex items-center justify-center"
+                                  >
+                                    <CheckCircle className="w-3 h-3 text-white" />
+                                  </motion.div>
+                                )}
+                              </div>
+                              <div className="text-sm text-muted-foreground mb-1">
+                                {level.delay} delay · {level.users} users · {level.fee} fee
+                              </div>
+                              <div className="text-xs text-muted-foreground">{level.description}</div>
+                            </div>
+                          </motion.button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Progress Bar when processing */}
+                    {isProcessing && (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Processing deposit...</span>
+                          <span>{progress}%</span>
+                        </div>
+                        <ProgressBar progress={progress} />
+                      </div>
+                    )}
                   </motion.div>
                 )}
 
@@ -328,33 +386,40 @@ export function ZephyrSection() {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 20 }}
+                    className="space-y-4"
                   >
                     <label className="block text-sm font-medium mb-3">Enter Withdrawal Details</label>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Secret</label>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Secret</label>
+                      <div className="relative">
                         <input 
-                          type="password"
+                          type={showSecret ? "text" : "password"}
                           placeholder="Enter your secret..."
-                          className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:border-primary focus:outline-none font-mono text-sm"
+                          className="w-full px-4 py-3 pr-12 bg-background border border-border rounded-xl focus:border-primary focus:outline-none font-mono text-sm"
                         />
+                        <button
+                          onClick={() => setShowSecret(!showSecret)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
                       </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Nullifier</label>
-                        <input 
-                          type="password"
-                          placeholder="Enter your nullifier..."
-                          className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:border-primary focus:outline-none font-mono text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Recipient Address</label>
-                        <input 
-                          type="text"
-                          placeholder="0x..."
-                          className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:border-primary focus:outline-none font-mono text-sm"
-                        />
-                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Nullifier</label>
+                      <input 
+                        type="password"
+                        placeholder="Enter your nullifier..."
+                        className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:border-primary focus:outline-none font-mono text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Recipient Address</label>
+                      <input 
+                        type="text"
+                        placeholder="0x..."
+                        className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:border-primary focus:outline-none font-mono text-sm"
+                      />
                     </div>
                   </motion.div>
                 )}
@@ -375,10 +440,42 @@ export function ZephyrSection() {
                     <TransactionPreview />
                   </motion.div>
                 )}
+
+                {activeTab === "settings" && (
+                  <motion.div
+                    key="settings"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    className="space-y-2"
+                  >
+                    <h4 className="font-semibold mb-4">Privacy Settings</h4>
+                    <ToggleSetting
+                      title="Auto-mix on deposit"
+                      description="Automatically start mixing when you deposit"
+                      defaultEnabled={true}
+                    />
+                    <ToggleSetting
+                      title="Email notifications"
+                      description="Get notified when mixing is complete"
+                      defaultEnabled={false}
+                    />
+                    <ToggleSetting
+                      title="Advanced mode"
+                      description="Show additional technical details"
+                      defaultEnabled={false}
+                    />
+                    <ToggleSetting
+                      title="Dark mode"
+                      description="Use dark theme for the interface"
+                      defaultEnabled={true}
+                    />
+                  </motion.div>
+                )}
               </AnimatePresence>
             </div>
 
-            {/* Right Panel - Privacy Score & Anonymity */}
+            {/* Right Panel */}
             <div className="p-8 bg-gradient-to-br from-background to-primary/5">
               <div className="text-center mb-8">
                 <PrivacyScoreGauge score={98.5} size="md" />
@@ -387,9 +484,19 @@ export function ZephyrSection() {
               <AnonymitySetViz totalUsers={10247} />
 
               <div className="mt-8 flex flex-col sm:flex-row gap-4">
-                <Button className="flex-1 bg-gradient-to-r from-primary to-primary-dark hover:opacity-90 py-6 text-lg">
-                  <Lock className="w-5 h-5 mr-2" />
-                  {activeTab === "withdraw" ? "Generate ZK Proof" : "Start Private Mix"}
+                <Button 
+                  onClick={handleDeposit}
+                  disabled={isProcessing}
+                  className="flex-1 bg-gradient-to-r from-primary to-primary-dark hover:opacity-90 py-6 text-lg"
+                >
+                  {isProcessing ? (
+                    <>Processing...</>
+                  ) : (
+                    <>
+                      <Lock className="w-5 h-5 mr-2" />
+                      {activeTab === "withdraw" ? "Generate ZK Proof" : "Start Private Mix"}
+                    </>
+                  )}
                 </Button>
                 <Button variant="outline" className="flex-1 py-6 text-lg">
                   <FileText className="w-5 h-5 mr-2" />
