@@ -121,9 +121,17 @@
 ;; Protocol Functions (Privileged)
 ;; ==========================================
 
+;; Mint/burn allow tx-sender (direct) or contract-caller (e.g. bridge)
+(define-private (can-mint-or-burn)
+  (or
+    (is-protocol-caller MINT-ROLE tx-sender)
+    (is-protocol-caller MINT-ROLE contract-caller)
+  )
+)
+
 (define-public (protocol-mint (amount uint) (recipient principal))
   (begin
-    (asserts! (is-protocol-caller MINT-ROLE tx-sender) ERR-NOT-AUTHORIZED)
+    (asserts! (can-mint-or-burn) ERR-NOT-AUTHORIZED)
     (try! (check-not-paused))
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
     (try! (ft-mint? usdcx amount recipient))
@@ -134,7 +142,7 @@
 
 (define-public (protocol-burn (amount uint) (owner principal))
   (begin
-    (asserts! (is-protocol-caller MINT-ROLE tx-sender) ERR-NOT-AUTHORIZED)
+    (asserts! (can-mint-or-burn) ERR-NOT-AUTHORIZED)
     (try! (check-not-paused))
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
     (try! (ft-burn? usdcx amount owner))
