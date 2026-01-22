@@ -5,7 +5,7 @@
 
 import { ethers, EventLog, Log } from "ethers"
 import { logger } from "../utils/logger"
-import { NetworkError } from "../utils/errors"
+import { NetworkError, getErrorMessage } from "../utils/errors"
 import { Web3DataProvider } from "./dataProvider"
 
 export interface EventFilter {
@@ -18,7 +18,7 @@ export interface EventFilter {
 export interface EventListenerConfig {
   chainId: number
   contractAddress: string
-  abi: any[]
+  abi: unknown[]
   eventName: string
   filter?: EventFilter
   pollInterval?: number // For HTTP polling fallback
@@ -32,7 +32,7 @@ export interface EventData {
   transactionHash: string
   transactionIndex: number
   logIndex: number
-  args: any
+  args: unknown
   timestamp?: number
 }
 
@@ -75,7 +75,7 @@ export class BlockchainEventListener {
         // Create contract instance
         const contract = new ethers.Contract(
           config.contractAddress,
-          config.abi,
+          config.abi as ethers.InterfaceAbi,
           provider,
         )
 
@@ -100,11 +100,12 @@ export class BlockchainEventListener {
       )
 
       return listenerId
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error subscribing to event:`, error)
-      throw new NetworkError(`Failed to subscribe to event: ${error.message}`, {
+      const errorMsg = getErrorMessage(error)
+      throw new NetworkError(`Failed to subscribe to event: ${errorMsg}`, {
         config,
-        error: error.message,
+        error: errorMsg,
       })
     }
   }
@@ -131,7 +132,7 @@ export class BlockchainEventListener {
     // Use WebSocket if available, otherwise fallback to polling
     if (listener.provider instanceof ethers.WebSocketProvider) {
       // WebSocket-based event listening
-      listener.contract.on(config.eventName, async (...args: any[]) => {
+      listener.contract.on(config.eventName, async (...args: unknown[]) => {
         const event = args[args.length - 1] as EventLog
 
         try {
@@ -170,9 +171,10 @@ export class BlockchainEventListener {
           const currentBlock = await listener.provider.getBlockNumber()
           
           if (currentBlock > lastBlockNumber) {
+            const eventFilter = listener.contract.filters[config.eventName]()
             const filter = {
               address: config.contractAddress,
-              topics: listener.contract.filters[config.eventName]().topics,
+              topics: (eventFilter as any).topics || undefined,
               fromBlock: lastBlockNumber + 1,
               toBlock: currentBlock,
             }
@@ -285,12 +287,12 @@ export class BlockchainEventListener {
   ): Promise<EventData[]> {
     try {
       const provider = this.dataProvider.getProvider(config.chainId)
-      const contract = new ethers.Contract(config.contractAddress, config.abi, provider)
+      const contract = new ethers.Contract(config.contractAddress, config.abi as ethers.InterfaceAbi, provider)
 
-      const filter = contract.filters[config.eventName]()
+      const eventFilter = contract.filters[config.eventName]()
       const logs = await provider.getLogs({
         address: config.contractAddress,
-        topics: filter.topics,
+        topics: (eventFilter as any).topics || undefined,
         fromBlock,
         toBlock,
       })
@@ -321,13 +323,14 @@ export class BlockchainEventListener {
       }
 
       return events
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error fetching historical events:`, error)
-      throw new NetworkError(`Failed to fetch historical events: ${error.message}`, {
+      const errorMsg = getErrorMessage(error)
+      throw new NetworkError(`Failed to fetch historical events: ${errorMsg}`, {
         config,
         fromBlock,
         toBlock,
-        error: error.message,
+        error: errorMsg,
       })
     }
   }

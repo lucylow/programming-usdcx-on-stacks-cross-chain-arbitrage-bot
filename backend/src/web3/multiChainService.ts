@@ -5,7 +5,7 @@
 
 import { ethers } from "ethers"
 import { logger } from "../utils/logger"
-import { NetworkError } from "../utils/errors"
+import { NetworkError, getErrorMessage } from "../utils/errors"
 import { Web3DataProvider } from "./dataProvider"
 import { PriceFeedAggregator } from "./priceFeedAggregator"
 import { TokenMetadataService } from "./tokenMetadata"
@@ -182,11 +182,12 @@ export class MultiChainService {
         gasPrice: gasPrice.gasPrice,
         pendingTransactions: blockData.pendingTransactions,
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error fetching chain metrics:`, error)
-      throw new NetworkError(`Failed to fetch chain metrics: ${error.message}`, {
+      const errorMsg = getErrorMessage(error)
+      throw new NetworkError(`Failed to fetch chain metrics: ${errorMsg}`, {
         chainId,
-        error: error.message,
+        error: errorMsg,
       })
     }
   }
@@ -266,13 +267,14 @@ export class MultiChainService {
         arbitrageOpportunity: Math.abs(priceDifferencePercent) > 0.5, // 0.5% threshold
         timestamp: Date.now(),
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error comparing cross-chain prices:`, error)
-      throw new NetworkError(`Failed to compare cross-chain prices: ${error.message}`, {
+      const errorMsg = getErrorMessage(error)
+      throw new NetworkError(`Failed to compare cross-chain prices: ${errorMsg}`, {
         tokenSymbol,
         sourceChainId,
         targetChainId,
-        error: error.message,
+        error: errorMsg,
       })
     }
   }

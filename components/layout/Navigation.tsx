@@ -29,11 +29,13 @@ interface NavItem {
   href: string
   icon: React.ElementType
   badge?: string
+  order?: number
   children?: {
     label: string
     href: string
     icon: React.ElementType
     description: string
+    order?: number
   }[]
 }
 
@@ -42,30 +44,35 @@ const navigationItems: NavItem[] = [
     label: "Home",
     href: "/",
     icon: Home,
+    order: 1,
   },
   {
     label: "Bot",
     href: "/bot",
     icon: Bot,
     badge: "Live",
+    order: 2,
     children: [
       {
         label: "Dashboard",
         href: "/bot/dashboard",
         icon: BarChart3,
         description: "Monitor bot performance",
+        order: 1,
       },
       {
         label: "Opportunities",
         href: "/bot/opportunities",
         icon: Zap,
         description: "View detected arbitrage",
+        order: 2,
       },
       {
         label: "History",
         href: "/bot/history",
         icon: FileText,
         description: "Past trades and results",
+        order: 3,
       },
     ],
   },
@@ -73,18 +80,21 @@ const navigationItems: NavItem[] = [
     label: "Analytics",
     href: "/analytics",
     icon: TrendingUp,
+    order: 3,
     children: [
       {
         label: "Overview",
         href: "/analytics",
         icon: BarChart3,
         description: "Performance metrics",
+        order: 1,
       },
       {
         label: "Risk Analysis",
         href: "/analytics/risk",
         icon: Shield,
         description: "Risk management stats",
+        order: 2,
       },
     ],
   },
@@ -92,22 +102,29 @@ const navigationItems: NavItem[] = [
     label: "Resources",
     href: "/resources",
     icon: BookOpen,
+    order: 4,
     children: [
       {
         label: "Documentation",
         href: "/docs",
         icon: BookOpen,
         description: "Technical guides",
+        order: 1,
       },
       {
         label: "FAQ",
         href: "/faq",
         icon: HelpCircle,
         description: "Common questions",
+        order: 2,
       },
     ],
   },
-]
+].sort((a, b) => (a.order || 0) - (b.order || 0))
+  .map(item => ({
+    ...item,
+    children: item.children?.sort((a, b) => (a.order || 0) - (b.order || 0))
+  }))
 
 export default function Navigation() {
   const pathname = usePathname()
@@ -259,7 +276,9 @@ function NavItem({ item, pathname, activeDropdown, setActiveDropdown }: any) {
             transition={{ duration: 0.2 }}
             className="absolute top-full left-0 mt-2 w-64 bg-darker border border-white/10 rounded-xl shadow-2xl overflow-hidden"
           >
-            {item.children.map((child: any, index: number) => (
+            {item.children
+              .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
+              .map((child: any, index: number) => (
               <Link key={child.href} href={child.href}>
                 <motion.div
                   initial={{ opacity: 0, x: -20 }}
@@ -383,7 +402,9 @@ function MobileNavItem({ item, pathname, onClose }: any) {
             exit={{ height: 0, opacity: 0 }}
             className="ml-8 mt-2 space-y-1 overflow-hidden"
           >
-            {item.children.map((child: any) => (
+            {item.children
+              .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
+              .map((child: any) => (
               <Link key={child.href} href={child.href} onClick={onClose}>
                 <div className="flex items-center space-x-3 px-4 py-2 rounded-lg hover:bg-dark/50 transition-colors">
                   <child.icon className="w-4 h-4 text-muted-foreground" />

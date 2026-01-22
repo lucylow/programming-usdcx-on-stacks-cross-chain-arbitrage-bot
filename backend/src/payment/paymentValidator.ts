@@ -53,7 +53,7 @@ export class PaymentValidator {
     if (request.type === "bridge_deposit" || request.type === "bridge_withdrawal") {
       if (!request.recipientAddress) {
         errors.push("Recipient address is required for bridge operations")
-      } else if (!this.isValidAddress(request.recipientAddress, request.chain)) {
+      } else if (request.chain && !this.isValidAddress(request.recipientAddress, request.chain)) {
         errors.push(`Invalid ${request.chain} address: ${request.recipientAddress}`)
       }
     }
@@ -61,7 +61,7 @@ export class PaymentValidator {
     if (request.type === "approve" || request.type === "swap") {
       if (!request.tokenAddress) {
         warnings.push("Token address not provided, may use default")
-      } else if (!this.isValidAddress(request.tokenAddress, request.chain)) {
+      } else if (request.chain && !this.isValidAddress(request.tokenAddress, request.chain)) {
         errors.push(`Invalid token address: ${request.tokenAddress}`)
       }
     }

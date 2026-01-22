@@ -141,7 +141,32 @@ export class ArbitrageEngine {
     }
   }
 
-  private async executeTrade(opportunity: ArbitrageOpportunity): Promise<void> {
+  /**
+   * Execute a single opportunity by id (optional). Returns trade id.
+   * Used by POST /api/trades/execute.
+   */
+  async executeSingleOpportunity(opportunityId?: string): Promise<{ success: boolean; tradeId: string }> {
+    const opportunities = this.priceOracle.detectOpportunities(config.risk.minProfitThreshold)
+    const opp = opportunityId
+      ? opportunities.find((o) => {
+          const idx = opportunities.indexOf(o)
+          const syntheticId = `opp_${o.timestamp}_${idx}`
+          return syntheticId.includes(opportunityId) || opportunityId.includes(String(o.timestamp))
+        }) ?? opportunities[0]
+      : opportunities[0]
+    if (!opp) {
+      return { success: false, tradeId: "" }
+    }
+    try {
+      const tradeId = await this.executeTrade(opp)
+      return { success: true, tradeId }
+    } catch {
+      const recent = this.getRecentTrades(1)
+      return { success: false, tradeId: recent[0]?.id ?? "" }
+    }
+  }
+
+  private async executeTrade(opportunity: ArbitrageOpportunity): Promise<string> {
     // Validate opportunity
     if (!opportunity) {
       throw new ValidationError("Opportunity is required for trade execution")
@@ -200,6 +225,7 @@ export class ArbitrageEngine {
       this.metrics.totalProfit += trade.profit
 
       logger.info(`Trade ${tradeId} completed successfully. Profit: $${trade.profit.toFixed(2)}`)
+      return tradeId
     } catch (error: unknown) {
       trade.status = "failed"
       trade.endTime = Date.now()
@@ -213,6 +239,7 @@ export class ArbitrageEngine {
       if (error instanceof ValidationError || error instanceof NetworkError) {
         throw error
       }
+      return tradeId
     } finally {
       this.metrics.totalTrades++
     }

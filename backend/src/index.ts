@@ -12,6 +12,11 @@ import {
   MultiChainService,
 } from "./web3"
 import { ethers } from "ethers"
+import { errorHandler, asyncHandler, successResponse } from "./middleware/errorHandler"
+import { ValidationError } from "./utils/errors"
+import { requestLogger } from "./middleware/requestLogger"
+import { rateLimiter } from "./middleware/rateLimiter"
+import { validateRequest, validators } from "./middleware/validation"
 
 // Initialize existing services
 const priceOracle = new PriceOracle()
@@ -47,41 +52,56 @@ const multiChainService = new MultiChainService(
 const app = express()
 
 // Middleware
-app.use(cors())
-app.use(express.json())
+app.use(cors({
+  origin: config.api.corsOrigin === "*" ? true : config.api.corsOrigin.split(","),
+  credentials: true,
+}))
+app.use(express.json({ limit: "10mb" }))
+app.use(express.urlencoded({ extended: true, limit: "10mb" }))
+
+// Request logging
+app.use(requestLogger)
+
+// Rate limiting
+app.use("/api", rateLimiter())
 
 // Health check endpoint
 app.get("/api/health", (req: Request, res: Response) => {
-  res.json({
-    status: "healthy",
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    version: "1.0.0",
-    mode: config.mode,
-  })
+  successResponse(
+    {
+      status: "healthy",
+      uptime: process.uptime(),
+      version: "1.0.0",
+      mode: config.mode,
+    },
+    res,
+  )
 })
 
-app.get("/api/bot/status", (req: Request, res: Response) => {
+app.get("/api/bot/status", asyncHandler(async (req: Request, res: Response) => {
   const status = arbitrageEngine.getStatus()
   const activeTrades = arbitrageEngine.getActiveTrades()
 
-  res.json({
-    running: status.running,
-    activeTrades: status.activeTrades,
-    queueLength: activeTrades.length,
-    opportunitiesDetected: status.metrics.totalTrades,
-    tradesExecuted: status.metrics.successfulTrades,
-    totalProfit: status.metrics.totalProfit,
-    winRate: status.metrics.winRate,
-    avgProfit: status.metrics.avgProfit,
-    uptime: process.uptime(),
-  })
-})
+  successResponse(
+    {
+      running: status.running,
+      activeTrades: status.activeTrades,
+      queueLength: activeTrades.length,
+      opportunitiesDetected: status.metrics.totalTrades,
+      tradesExecuted: status.metrics.successfulTrades,
+      totalProfit: status.metrics.totalProfit,
+      winRate: status.metrics.winRate,
+      avgProfit: status.metrics.avgProfit,
+      uptime: process.uptime(),
+    },
+    res,
+  )
+}))
 
-app.get("/api/opportunities", (req: Request, res: Response) => {
+app.get("/api/opportunities", asyncHandler(async (req: Request, res: Response) => {
   const opportunities = priceOracle.detectOpportunities(config.risk.minProfitThreshold)
 
-  res.json(
+  successResponse(
     opportunities.slice(0, 10).map((opp, index) => {
       const isEthToStacks = opp.direction === "eth_to_stacks"
       const sourceChain = isEthToStacks ? "ethereum" : "stacks"
@@ -110,13 +130,14 @@ app.get("/api/opportunities", (req: Request, res: Response) => {
         expiresAt: new Date(opp.timestamp + 5 * 60000).toISOString(), // 5 minutes from detection
       }
     }),
+    res,
   )
-})
+}))
 
-app.get("/api/trades", (req: Request, res: Response) => {
+app.get("/api/trades", asyncHandler(async (req: Request, res: Response) => {
   const trades = arbitrageEngine.getRecentTrades(20)
 
-  res.json(
+  successResponse(
     trades.map((trade) => {
       const tradeSize = 10000
       const executionTime = trade.endTime ? trade.endTime - trade.startTime : 0
@@ -143,30 +164,34 @@ app.get("/api/trades", (req: Request, res: Response) => {
         error: trade.error,
       }
     }),
+    res,
   )
-})
+}))
 
-app.get("/api/performance", (req: Request, res: Response) => {
+app.get("/api/performance", asyncHandler(async (req: Request, res: Response) => {
   const metrics = arbitrageEngine.getMetrics()
 
-  res.json({
-    period: "daily",
-    totalTrades: metrics.totalTrades,
-    profitableTrades: metrics.successfulTrades,
-    totalVolume: metrics.totalVolume,
-    totalProfit: metrics.totalProfit,
-    avgProfitPerTrade: metrics.avgProfit,
-    maxProfit: metrics.totalProfit > 0 ? metrics.avgProfit * 2.5 : 0,
-    maxLoss: metrics.totalTrades - metrics.successfulTrades > 0 ? -50 : 0,
-    sharpeRatio: metrics.winRate * 2,
-    winRate: metrics.winRate,
-  })
-})
+  successResponse(
+    {
+      period: "daily",
+      totalTrades: metrics.totalTrades,
+      profitableTrades: metrics.successfulTrades,
+      totalVolume: metrics.totalVolume,
+      totalProfit: metrics.totalProfit,
+      avgProfitPerTrade: metrics.avgProfit,
+      maxProfit: metrics.totalProfit > 0 ? metrics.avgProfit * 2.5 : 0,
+      maxLoss: metrics.totalTrades - metrics.successfulTrades > 0 ? -50 : 0,
+      sharpeRatio: metrics.winRate * 2,
+      winRate: metrics.winRate,
+    },
+    res,
+  )
+}))
 
-app.get("/api/prices", (req: Request, res: Response) => {
+app.get("/api/prices", asyncHandler(async (req: Request, res: Response) => {
   const allPrices = priceOracle.getAllPrices()
 
-  res.json(
+  successResponse(
     allPrices.map((price) => ({
       chain: price.chain,
       dex: price.dex,
@@ -177,309 +202,229 @@ app.get("/api/prices", (req: Request, res: Response) => {
       timestamp: price.timestamp,
       source: price.source,
     })),
+    res,
   )
-})
+}))
 
-app.get("/api/oracle/stats", (req: Request, res: Response) => {
+app.get("/api/oracle/stats", asyncHandler(async (req: Request, res: Response) => {
   const stats = priceOracle.getStats()
-  res.json(stats)
-})
+  successResponse(stats, res)
+}))
 
-app.post("/api/bot/start", async (req: Request, res: Response) => {
-  try {
-    await arbitrageEngine.start()
-    res.json({ success: true, message: "Bot started successfully" })
-  } catch (error: any) {
-    logger.error("Error starting bot:", error)
-    res.status(500).json({ success: false, error: error.message })
-  }
-})
+app.post("/api/bot/start", asyncHandler(async (req: Request, res: Response) => {
+  await arbitrageEngine.start()
+  successResponse({ message: "Bot started successfully" }, res)
+}))
 
-app.post("/api/bot/stop", (req: Request, res: Response) => {
-  try {
-    arbitrageEngine.stop()
-    res.json({ success: true, message: "Bot stopped successfully" })
-  } catch (error: any) {
-    logger.error("Error stopping bot:", error)
-    res.status(500).json({ success: false, error: error.message })
-  }
-})
+app.post("/api/bot/stop", asyncHandler(async (req: Request, res: Response) => {
+  arbitrageEngine.stop()
+  successResponse({ message: "Bot stopped successfully" }, res)
+}))
 
 // ==================== Web3 Data Provider Endpoints ====================
 
-app.get("/api/web3/block/:chainId", async (req: Request, res: Response) => {
-  try {
+app.get(
+  "/api/web3/block/:chainId",
+  validateRequest({
+    params: (params: unknown) => {
+      const typedParams = params as Record<string, string>
+      return validators.chainId(typedParams.chainId)
+    },
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
     const chainId = Number.parseInt(req.params.chainId)
     const blockData = await web3DataProvider.getBlockData(chainId)
-    res.json(blockData)
-  } catch (error: any) {
-    logger.error("Error fetching block data:", error)
-    res.status(500).json({ error: error.message })
-  }
-})
+    successResponse(blockData, res)
+  }),
+)
 
-app.get("/api/web3/balance/:chainId/:address", async (req: Request, res: Response) => {
-  try {
-    const chainId = Number.parseInt(req.params.chainId)
-    const address = req.params.address
-    const tokenAddress = req.query.token as string | undefined
+app.get("/api/web3/balance/:chainId/:address", asyncHandler(async (req: Request, res: Response) => {
+  const chainId = Number.parseInt(req.params.chainId)
+  const address = req.params.address
+  const tokenAddress = req.query.token as string | undefined
 
-    if (tokenAddress) {
-      const balance = await web3DataProvider.getTokenBalance(chainId, tokenAddress, address)
-      res.json(balance)
-    } else {
-      const balance = await web3DataProvider.getNativeBalance(chainId, address)
-      res.json({ address, balance, chainId })
-    }
-  } catch (error: any) {
-    logger.error("Error fetching balance:", error)
-    res.status(500).json({ error: error.message })
+  if (tokenAddress) {
+    const balance = await web3DataProvider.getTokenBalance(chainId, tokenAddress, address)
+    successResponse(balance, res)
+  } else {
+    const balance = await web3DataProvider.getNativeBalance(chainId, address)
+    successResponse({ address, balance, chainId }, res)
   }
-})
+}))
 
-app.get("/api/web3/transaction/:chainId/:txHash", async (req: Request, res: Response) => {
-  try {
-    const chainId = Number.parseInt(req.params.chainId)
-    const txHash = req.params.txHash
-    const txData = await web3DataProvider.getTransaction(chainId, txHash)
-    res.json(txData)
-  } catch (error: any) {
-    logger.error("Error fetching transaction:", error)
-    res.status(500).json({ error: error.message })
-  }
-})
+app.get("/api/web3/transaction/:chainId/:txHash", asyncHandler(async (req: Request, res: Response) => {
+  const chainId = Number.parseInt(req.params.chainId)
+  const txHash = req.params.txHash
+  const txData = await web3DataProvider.getTransaction(chainId, txHash)
+  successResponse(txData, res)
+}))
 
-app.get("/api/web3/gas/:chainId", async (req: Request, res: Response) => {
-  try {
-    const chainId = Number.parseInt(req.params.chainId)
-    const gasPrice = await web3DataProvider.getGasPrice(chainId)
-    res.json(gasPrice)
-  } catch (error: any) {
-    logger.error("Error fetching gas price:", error)
-    res.status(500).json({ error: error.message })
-  }
-})
+app.get("/api/web3/gas/:chainId", asyncHandler(async (req: Request, res: Response) => {
+  const chainId = Number.parseInt(req.params.chainId)
+  const gasPrice = await web3DataProvider.getGasPrice(chainId)
+  successResponse(gasPrice, res)
+}))
 
 // ==================== Price Feed Aggregator Endpoints ====================
 
-app.get("/api/web3/price/:symbol", async (req: Request, res: Response) => {
-  try {
-    const symbol = req.params.symbol
-    const tokenAddress = req.query.address as string | undefined
-    const chainId = req.query.chainId ? Number.parseInt(req.query.chainId as string) : undefined
+app.get("/api/web3/price/:symbol", asyncHandler(async (req: Request, res: Response) => {
+  const symbol = req.params.symbol
+  const tokenAddress = req.query.address as string | undefined
+  const chainId = req.query.chainId ? Number.parseInt(req.query.chainId as string) : undefined
 
-    const price = await priceFeedAggregator.getAggregatedPrice(symbol, tokenAddress, chainId)
-    res.json(price)
-  } catch (error: any) {
-    logger.error("Error fetching price:", error)
-    res.status(500).json({ error: error.message })
+  const price = await priceFeedAggregator.getAggregatedPrice(symbol, tokenAddress, chainId)
+  successResponse(price, res)
+}))
+
+app.post("/api/web3/prices", asyncHandler(async (req: Request, res: Response) => {
+  const { symbols, tokenAddresses, chainId } = req.body
+
+  if (!Array.isArray(symbols)) {
+    return res.status(400).json({ error: "symbols must be an array" })
   }
-})
 
-app.post("/api/web3/prices", async (req: Request, res: Response) => {
-  try {
-    const { symbols, tokenAddresses, chainId } = req.body
+  const addressesMap = tokenAddresses
+    ? new Map<string, string>(Object.entries(tokenAddresses))
+    : undefined
 
-    if (!Array.isArray(symbols)) {
-      return res.status(400).json({ error: "symbols must be an array" })
-    }
-
-    const addressesMap = tokenAddresses
-      ? new Map<string, string>(Object.entries(tokenAddresses))
-      : undefined
-
-    const prices = await priceFeedAggregator.getMultiplePrices(symbols, addressesMap, chainId)
-    res.json(Object.fromEntries(prices))
-  } catch (error: any) {
-    logger.error("Error fetching prices:", error)
-    res.status(500).json({ error: error.message })
-  }
-})
+  const prices = await priceFeedAggregator.getMultiplePrices(symbols, addressesMap, chainId)
+  successResponse(Object.fromEntries(prices), res)
+}))
 
 // ==================== Token Metadata Endpoints ====================
 
-app.get("/api/web3/token/:chainId/:address", async (req: Request, res: Response) => {
-  try {
-    const chainId = Number.parseInt(req.params.chainId)
-    const address = req.params.address
-    const metadata = await tokenMetadataService.getTokenMetadata(chainId, address)
-    res.json(metadata)
-  } catch (error: any) {
-    logger.error("Error fetching token metadata:", error)
-    res.status(500).json({ error: error.message })
+app.get("/api/web3/token/:chainId/:address", asyncHandler(async (req: Request, res: Response) => {
+  const chainId = Number.parseInt(req.params.chainId)
+  const address = req.params.address
+  const metadata = await tokenMetadataService.getTokenMetadata(chainId, address)
+  successResponse(metadata, res)
+}))
+
+app.post("/api/web3/tokens/:chainId", asyncHandler(async (req: Request, res: Response) => {
+  const chainId = Number.parseInt(req.params.chainId)
+  const { addresses } = req.body
+
+  if (!Array.isArray(addresses)) {
+    return res.status(400).json({ error: "addresses must be an array" })
   }
-})
 
-app.post("/api/web3/tokens/:chainId", async (req: Request, res: Response) => {
-  try {
-    const chainId = Number.parseInt(req.params.chainId)
-    const { addresses } = req.body
+  const metadata = await tokenMetadataService.getMultipleTokenMetadata(chainId, addresses)
+  successResponse(Object.fromEntries(metadata), res)
+}))
 
-    if (!Array.isArray(addresses)) {
-      return res.status(400).json({ error: "addresses must be an array" })
-    }
+app.get("/api/web3/tokens/search", asyncHandler(async (req: Request, res: Response) => {
+  const query = req.query.q as string
+  const chainId = req.query.chainId ? Number.parseInt(req.query.chainId as string) : undefined
 
-    const metadata = await tokenMetadataService.getMultipleTokenMetadata(chainId, addresses)
-    res.json(Object.fromEntries(metadata))
-  } catch (error: any) {
-    logger.error("Error fetching token metadata:", error)
-    res.status(500).json({ error: error.message })
+  if (!query) {
+    return res.status(400).json({ error: "query parameter 'q' is required" })
   }
-})
 
-app.get("/api/web3/tokens/search", async (req: Request, res: Response) => {
-  try {
-    const query = req.query.q as string
-    const chainId = req.query.chainId ? Number.parseInt(req.query.chainId as string) : undefined
-
-    if (!query) {
-      return res.status(400).json({ error: "query parameter 'q' is required" })
-    }
-
-    const tokens = await tokenMetadataService.searchTokens(query, chainId)
-    res.json(tokens)
-  } catch (error: any) {
-    logger.error("Error searching tokens:", error)
-    res.status(500).json({ error: error.message })
-  }
-})
+  const tokens = await tokenMetadataService.searchTokens(query, chainId)
+  successResponse(tokens, res)
+}))
 
 // ==================== Multi-Chain Service Endpoints ====================
 
-app.get("/api/web3/chains", (req: Request, res: Response) => {
-  try {
-    const chains = multiChainService.getSupportedChains()
-    res.json(chains)
-  } catch (error: any) {
-    logger.error("Error fetching chains:", error)
-    res.status(500).json({ error: error.message })
+app.get("/api/web3/chains", asyncHandler(async (req: Request, res: Response) => {
+  const chains = multiChainService.getSupportedChains()
+  successResponse(chains, res)
+}))
+
+app.get("/api/web3/chain/:chainId", asyncHandler(async (req: Request, res: Response) => {
+  const chainId = Number.parseInt(req.params.chainId)
+  const chainInfo = multiChainService.getChainInfo(chainId)
+  
+  if (!chainInfo) {
+    return res.status(404).json({ error: "Chain not found" })
   }
-})
+  
+  successResponse(chainInfo, res)
+}))
 
-app.get("/api/web3/chain/:chainId", (req: Request, res: Response) => {
-  try {
-    const chainId = Number.parseInt(req.params.chainId)
-    const chainInfo = multiChainService.getChainInfo(chainId)
-    
-    if (!chainInfo) {
-      return res.status(404).json({ error: "Chain not found" })
-    }
-    
-    res.json(chainInfo)
-  } catch (error: any) {
-    logger.error("Error fetching chain info:", error)
-    res.status(500).json({ error: error.message })
+app.get("/api/web3/chain/:chainId/metrics", asyncHandler(async (req: Request, res: Response) => {
+  const chainId = Number.parseInt(req.params.chainId)
+  const metrics = await multiChainService.getChainMetrics(chainId)
+  successResponse(metrics, res)
+}))
+
+app.get("/api/web3/chains/metrics", asyncHandler(async (req: Request, res: Response) => {
+  const metrics = await multiChainService.getAllChainMetrics()
+  successResponse(Object.fromEntries(metrics), res)
+}))
+
+app.get("/api/web3/cross-chain/compare", asyncHandler(async (req: Request, res: Response) => {
+  const symbol = req.query.symbol as string
+  const sourceChainId = Number.parseInt(req.query.sourceChainId as string)
+  const targetChainId = Number.parseInt(req.query.targetChainId as string)
+  const sourceAddress = req.query.sourceAddress as string | undefined
+  const targetAddress = req.query.targetAddress as string | undefined
+
+  if (!symbol || !sourceChainId || !targetChainId) {
+    return res.status(400).json({
+      error: "symbol, sourceChainId, and targetChainId are required",
+    })
   }
-})
 
-app.get("/api/web3/chain/:chainId/metrics", async (req: Request, res: Response) => {
-  try {
-    const chainId = Number.parseInt(req.params.chainId)
-    const metrics = await multiChainService.getChainMetrics(chainId)
-    res.json(metrics)
-  } catch (error: any) {
-    logger.error("Error fetching chain metrics:", error)
-    res.status(500).json({ error: error.message })
+  const comparison = await multiChainService.compareCrossChainPrices(
+    symbol,
+    sourceChainId,
+    targetChainId,
+    {
+      source: sourceAddress,
+      target: targetAddress,
+    },
+  )
+
+  successResponse(comparison, res)
+}))
+
+app.post("/api/web3/cross-chain/arbitrage", asyncHandler(async (req: Request, res: Response) => {
+  const { symbol, chainPairs, threshold } = req.body
+
+  if (!symbol || !Array.isArray(chainPairs)) {
+    return res.status(400).json({
+      error: "symbol and chainPairs array are required",
+    })
   }
-})
 
-app.get("/api/web3/chains/metrics", async (req: Request, res: Response) => {
-  try {
-    const metrics = await multiChainService.getAllChainMetrics()
-    res.json(Object.fromEntries(metrics))
-  } catch (error: any) {
-    logger.error("Error fetching chain metrics:", error)
-    res.status(500).json({ error: error.message })
+  const opportunities = await multiChainService.monitorArbitrageOpportunities(
+    symbol,
+    chainPairs,
+    threshold || 0.5,
+  )
+
+  successResponse(opportunities, res)
+}))
+
+app.get("/api/web3/multi-chain/balance", asyncHandler(async (req: Request, res: Response) => {
+  const walletAddress = req.query.address as string
+  const tokenAddress = req.query.token as string
+  const chainIdsParam = req.query.chainIds as string
+
+  if (!walletAddress || !chainIdsParam) {
+    return res.status(400).json({
+      error: "address and chainIds are required",
+    })
   }
-})
 
-app.get("/api/web3/cross-chain/compare", async (req: Request, res: Response) => {
-  try {
-    const symbol = req.query.symbol as string
-    const sourceChainId = Number.parseInt(req.query.sourceChainId as string)
-    const targetChainId = Number.parseInt(req.query.targetChainId as string)
-    const sourceAddress = req.query.sourceAddress as string | undefined
-    const targetAddress = req.query.targetAddress as string | undefined
+  const chainIds = chainIdsParam.split(",").map((id) => Number.parseInt(id.trim()))
 
-    if (!symbol || !sourceChainId || !targetChainId) {
-      return res.status(400).json({
-        error: "symbol, sourceChainId, and targetChainId are required",
-      })
-    }
-
-    const comparison = await multiChainService.compareCrossChainPrices(
-      symbol,
-      sourceChainId,
-      targetChainId,
-      {
-        source: sourceAddress,
-        target: targetAddress,
-      },
+  if (tokenAddress) {
+    const balances = await multiChainService.getMultiChainBalance(
+      walletAddress,
+      tokenAddress,
+      chainIds,
     )
-
-    res.json(comparison)
-  } catch (error: any) {
-    logger.error("Error comparing cross-chain prices:", error)
-    res.status(500).json({ error: error.message })
-  }
-})
-
-app.post("/api/web3/cross-chain/arbitrage", async (req: Request, res: Response) => {
-  try {
-    const { symbol, chainPairs, threshold } = req.body
-
-    if (!symbol || !Array.isArray(chainPairs)) {
-      return res.status(400).json({
-        error: "symbol and chainPairs array are required",
-      })
-    }
-
-    const opportunities = await multiChainService.monitorArbitrageOpportunities(
-      symbol,
-      chainPairs,
-      threshold || 0.5,
+    successResponse(Object.fromEntries(balances), res)
+  } else {
+    const balances = await multiChainService.getMultiChainNativeBalance(
+      walletAddress,
+      chainIds,
     )
-
-    res.json(opportunities)
-  } catch (error: any) {
-    logger.error("Error monitoring arbitrage opportunities:", error)
-    res.status(500).json({ error: error.message })
+    successResponse(Object.fromEntries(balances), res)
   }
-})
-
-app.get("/api/web3/multi-chain/balance", async (req: Request, res: Response) => {
-  try {
-    const walletAddress = req.query.address as string
-    const tokenAddress = req.query.token as string
-    const chainIdsParam = req.query.chainIds as string
-
-    if (!walletAddress || !chainIdsParam) {
-      return res.status(400).json({
-        error: "address and chainIds are required",
-      })
-    }
-
-    const chainIds = chainIdsParam.split(",").map((id) => Number.parseInt(id.trim()))
-
-    if (tokenAddress) {
-      const balances = await multiChainService.getMultiChainBalance(
-        walletAddress,
-        tokenAddress,
-        chainIds,
-      )
-      res.json(Object.fromEntries(balances))
-    } else {
-      const balances = await multiChainService.getMultiChainNativeBalance(
-        walletAddress,
-        chainIds,
-      )
-      res.json(Object.fromEntries(balances))
-    }
-  } catch (error: any) {
-    logger.error("Error fetching multi-chain balance:", error)
-    res.status(500).json({ error: error.message })
-  }
-})
+}))
 
 async function startBot() {
   try {
@@ -519,6 +464,9 @@ async function shutdown() {
 
 process.on("SIGTERM", shutdown)
 process.on("SIGINT", shutdown)
+
+// Error handler must be last
+app.use(errorHandler)
 
 // Start server
 const PORT = config.api.port

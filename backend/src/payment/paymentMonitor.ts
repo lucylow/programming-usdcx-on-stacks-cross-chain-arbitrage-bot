@@ -106,8 +106,9 @@ export class PaymentMonitor {
     const successfulPayments = payments.filter((p) => p.status === "completed").length
     const failedPayments = payments.filter((p) => p.status === "failed").length
 
-    const completedPayments = payments.filter((p) => p.status === "completed" && p.completedAt && p.createdAt)
-    const processingTimes = completedPayments.map((p) => (p.completedAt! - p.createdAt) / 1000)
+    // Calculate processing time using confirmedAt and completedAt if available
+    const completedPayments = payments.filter((p) => p.status === "completed" && p.completedAt && p.confirmedAt)
+    const processingTimes = completedPayments.map((p) => (p.completedAt! - p.confirmedAt!) / 1000)
     const averageProcessingTime =
       processingTimes.length > 0
         ? processingTimes.reduce((sum, time) => sum + time, 0) / processingTimes.length

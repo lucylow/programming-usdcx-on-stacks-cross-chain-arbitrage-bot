@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Select,
   SelectContent,
@@ -204,24 +205,37 @@ export function LiveOpportunities() {
                 </div>
 
                 {opp.status === "active" && (
-                  <Button
-                    size="sm"
-                    onClick={() => handleExecute(opp.id)}
-                    disabled={executingId === opp.id || !wallet.connected}
-                    className="bg-brand hover:bg-brand-dark"
-                  >
-                    {executingId === opp.id ? (
-                      <>
-                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        Executing...
-                      </>
-                    ) : (
-                      <>
-                        <TrendingUp className="w-3 h-3 mr-1" />
-                        Execute
-                      </>
-                    )}
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <Button
+                          size="sm"
+                          onClick={() => handleExecute(opp.id)}
+                          disabled={executingId === opp.id || !wallet.connected}
+                          className="bg-brand hover:bg-brand-dark"
+                        >
+                          {executingId === opp.id ? (
+                            <>
+                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                              Executing...
+                            </>
+                          ) : (
+                            <>
+                              <TrendingUp className="w-3 h-3 mr-1" />
+                              Execute
+                            </>
+                          )}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {!wallet.connected
+                        ? "Connect wallet to execute"
+                        : executingId === opp.id
+                          ? "Executing trade..."
+                          : `Execute trade with ${opp.expectedProfit.toFixed(2)} profit`}
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </div>
             </div>

@@ -80,28 +80,28 @@ export default function LandingPage() {
             </Button>
           </div>
 
-          <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-6">
-            <Card className="bg-card-bg/50 border-white/10 p-6 text-center">
-              <div className="text-3xl font-bold text-accent mb-2">
+          <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+            <Card className="bg-card-bg/50 border-white/10 p-4 md:p-6 text-center">
+              <div className="text-2xl md:text-3xl font-bold text-accent mb-2">
                 {isLoading ? "..." : `$${((performance?.totalProfit || 0) / 1000).toFixed(1)}K`}
               </div>
-              <div className="text-sm text-muted-foreground">Total Profit</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Total Profit</div>
             </Card>
-            <Card className="bg-card-bg/50 border-white/10 p-6 text-center">
-              <div className="text-3xl font-bold text-white mb-2">
+            <Card className="bg-card-bg/50 border-white/10 p-4 md:p-6 text-center">
+              <div className="text-2xl md:text-3xl font-bold text-white mb-2">
                 {isLoading ? "..." : performance?.totalTrades || 0}
               </div>
-              <div className="text-sm text-muted-foreground">Trades Executed</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Trades Executed</div>
             </Card>
-            <Card className="bg-card-bg/50 border-white/10 p-6 text-center">
-              <div className="text-3xl font-bold text-accent mb-2">
+            <Card className="bg-card-bg/50 border-white/10 p-4 md:p-6 text-center">
+              <div className="text-2xl md:text-3xl font-bold text-accent mb-2">
                 {isLoading ? "..." : `${((botStatus?.winRate || 0) * 100).toFixed(1)}%`}
               </div>
-              <div className="text-sm text-muted-foreground">Win Rate</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Win Rate</div>
             </Card>
-            <Card className="bg-card-bg/50 border-white/10 p-6 text-center">
-              <div className="text-3xl font-bold text-white mb-2">{isLoading ? "..." : spread.toFixed(2) + "%"}</div>
-              <div className="text-sm text-muted-foreground">Avg Spread</div>
+            <Card className="bg-card-bg/50 border-white/10 p-4 md:p-6 text-center">
+              <div className="text-2xl md:text-3xl font-bold text-white mb-2">{isLoading ? "..." : spread.toFixed(2) + "%"}</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Avg Spread</div>
             </Card>
           </div>
         </div>

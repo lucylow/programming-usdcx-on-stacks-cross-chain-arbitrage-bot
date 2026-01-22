@@ -6,7 +6,7 @@
 import axios, { AxiosInstance } from "axios"
 import { ethers } from "ethers"
 import { logger } from "../utils/logger"
-import { NetworkError } from "../utils/errors"
+import { NetworkError, getErrorMessage } from "../utils/errors"
 
 export interface TokenMetadata {
   address: string
@@ -95,12 +95,13 @@ export class TokenMetadataService {
         totalSupply: totalSupply ? totalSupply.toString() : undefined,
         verified: true,
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error fetching on-chain metadata:`, error)
-      throw new NetworkError(`Failed to fetch on-chain metadata: ${error.message}`, {
+      const errorMsg = getErrorMessage(error)
+      throw new NetworkError(`Failed to fetch on-chain metadata: ${errorMsg}`, {
         chainId,
         tokenAddress,
-        error: error.message,
+        error: errorMsg,
       })
     }
   }
@@ -145,8 +146,8 @@ export class TokenMetadataService {
         volume24h: data.market_data?.total_volume?.usd,
         verified: true,
       }
-    } catch (error: any) {
-      logger.debug(`CoinGecko metadata not available: ${error.message}`)
+    } catch (error: unknown) {
+      logger.debug(`CoinGecko metadata not available: ${getErrorMessage(error)}`)
       return {}
     }
   }
@@ -197,19 +198,21 @@ export class TokenMetadataService {
     ])
 
     // Merge data (on-chain takes priority, then CoinGecko, then lists)
+    const onChain = onChainData as Partial<TokenMetadata>
+    const coinGecko = coinGeckoData as Partial<TokenMetadata>
     const metadata: TokenMetadata = {
       address: tokenAddress,
-      symbol: onChainData.symbol || coinGeckoData.symbol || listData?.symbol || "UNKNOWN",
-      name: onChainData.name || coinGeckoData.name || listData?.name || "Unknown Token",
-      decimals: onChainData.decimals || listData?.decimals || 18,
+      symbol: onChain.symbol || coinGecko.symbol || listData?.symbol || "UNKNOWN",
+      name: onChain.name || coinGecko.name || listData?.name || "Unknown Token",
+      decimals: onChain.decimals || listData?.decimals || 18,
       chainId,
-      logoURI: coinGeckoData.logoURI || listData?.logoURI,
+      logoURI: coinGecko.logoURI || listData?.logoURI,
       tags: listData?.tags,
-      verified: onChainData.verified || coinGeckoData.verified || listData?.verified || false,
-      totalSupply: onChainData.totalSupply,
-      priceUSD: coinGeckoData.priceUSD,
-      marketCap: coinGeckoData.marketCap,
-      volume24h: coinGeckoData.volume24h,
+      verified: onChain.verified || coinGecko.verified || listData?.verified || false,
+      totalSupply: onChain.totalSupply,
+      priceUSD: coinGecko.priceUSD,
+      marketCap: coinGecko.marketCap,
+      volume24h: coinGecko.volume24h,
     }
 
     // Cache result

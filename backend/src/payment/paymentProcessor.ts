@@ -12,7 +12,7 @@ export interface PaymentRequest {
   tokenAddress?: string
   recipientAddress?: string
   priority: "low" | "medium" | "high" | "critical"
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
   createdAt: number
 }
 
@@ -74,7 +74,7 @@ export class PaymentProcessor {
       logger.info("Payment Processor initialized successfully")
     } catch (error) {
       logger.error("Failed to initialize Payment Processor:", error)
-      throw new ExecutionError("Payment Processor initialization failed", { originalError: error })
+      throw new ExecutionError("Payment Processor initialization failed", undefined, { originalError: error })
     }
   }
 
@@ -118,7 +118,6 @@ export class PaymentProcessor {
       id: this.generateResultId(),
       requestId: request.id,
       status: "processing",
-      createdAt: Date.now(),
     }
 
     this.activePayments.set(request.id, result)
@@ -152,7 +151,7 @@ export class PaymentProcessor {
       result.completedAt = Date.now()
       
       logger.info(`Payment completed: ${request.id}`)
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Payment failed: ${request.id}`, error)
       result.status = "failed"
       result.error = error instanceof Error ? error.message : String(error)
@@ -204,7 +203,7 @@ export class PaymentProcessor {
     }
 
     const attestation = request.metadata?.attestation
-    if (!attestation) {
+    if (!attestation || typeof attestation !== "string") {
       throw new ValidationError("Attestation required for bridge withdrawal")
     }
 

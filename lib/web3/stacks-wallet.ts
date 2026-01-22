@@ -168,12 +168,22 @@ export class StacksWalletService {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error))
         
+        // Don't retry on certain errors
+        if (lastError.message.includes("User cancelled") || 
+            lastError.message.includes("insufficient funds") ||
+            lastError.message.includes("invalid")) {
+          throw lastError
+        }
+        
         if (options.onRetry) {
           options.onRetry(attempt, lastError)
         }
 
         if (attempt < maxRetries) {
-          await new Promise((resolve) => setTimeout(resolve, delayMs * attempt))
+          // Exponential backoff with jitter
+          const jitter = Math.random() * 0.3 * delayMs
+          const delay = delayMs * Math.pow(2, attempt - 1) + jitter
+          await new Promise((resolve) => setTimeout(resolve, delay))
         }
       }
     }
@@ -368,8 +378,15 @@ export class StacksWalletService {
 
   async getTransactionStatus(txId: string): Promise<TransactionStatus> {
     try {
-      const response = await fetch(`${this.network.coreApiUrl}/extended/v1/tx/${txId}`)
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+
+      const response = await fetch(`${this.network.coreApiUrl}/extended/v1/tx/${txId}`, {
+        signal: controller.signal,
+      })
       
+      clearTimeout(timeoutId)
+
       if (!response.ok) {
         throw new Error(`Failed to fetch transaction: ${response.statusText}`)
       }
@@ -392,6 +409,16 @@ export class StacksWalletService {
       return status
     } catch (error) {
       console.error("Error fetching transaction status:", error)
+      
+      // Return pending status for network errors (might still be processing)
+      if (error instanceof Error && error.name === "AbortError") {
+        return {
+          txId,
+          status: "pending",
+          error: "Request timeout - transaction may still be processing",
+        }
+      }
+      
       return {
         txId,
         status: "pending",
@@ -401,24 +428,51 @@ export class StacksWalletService {
   }
 
   /**
-   * Wait for transaction confirmation
+   * Wait for transaction confirmation with progress callback
    */
   async waitForConfirmation(
     txId: string,
     timeoutMs = 300000, // 5 minutes default
     pollIntervalMs = 5000, // 5 seconds
+    onProgress?: (status: TransactionStatus) => void,
   ): Promise<TransactionStatus> {
     const startTime = Date.now()
+    let lastStatus: TransactionStatus | null = null
 
     while (Date.now() - startTime < timeoutMs) {
-      const status = await this.getTransactionStatus(txId)
+      try {
+        const status = await this.getTransactionStatus(txId)
+        lastStatus = status
 
-      if (status.status === "success" || status.status === "failed") {
-        return status
+        // Call progress callback
+        if (onProgress) {
+          onProgress(status)
+        }
+
+        if (status.status === "success" || status.status === "failed") {
+          return status
+        }
+
+        // Wait before next poll with exponential backoff for pending transactions
+        const elapsed = Date.now() - startTime
+        const adaptiveDelay = elapsed > 60000 ? pollIntervalMs * 2 : pollIntervalMs
+        await new Promise((resolve) => setTimeout(resolve, adaptiveDelay))
+      } catch (error) {
+        // If we have a last known status, continue polling
+        if (lastStatus) {
+          const elapsed = Date.now() - startTime
+          if (elapsed < timeoutMs) {
+            await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
+            continue
+          }
+        }
+        throw error
       }
+    }
 
-      // Wait before next poll
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
+    // Return last known status or throw timeout error
+    if (lastStatus) {
+      return lastStatus
     }
 
     throw new Error(`Transaction ${txId} confirmation timeout after ${timeoutMs}ms`)

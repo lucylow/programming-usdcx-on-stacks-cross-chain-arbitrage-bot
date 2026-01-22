@@ -6,7 +6,7 @@
 import { ethers } from "ethers"
 import axios, { AxiosInstance } from "axios"
 import { logger } from "../utils/logger"
-import { NetworkError, TimeoutError } from "../utils/errors"
+import { NetworkError, TimeoutError, getErrorMessage } from "../utils/errors"
 
 export interface BlockchainData {
   chainId: number
@@ -41,7 +41,7 @@ export interface TransactionData {
 
 export interface ContractData {
   address: string
-  abi: any[]
+  abi: unknown[]
   bytecode?: string
   verified: boolean
 }
@@ -71,63 +71,116 @@ export class Web3DataProvider {
   }
 
   /**
-   * Get provider for a specific chain
+   * Get provider for a specific chain with error handling
    */
   getProvider(chainId: number): ethers.JsonRpcProvider {
     const provider = this.providers.get(chainId)
     if (!provider) {
-      throw new Error(`No provider configured for chain ID ${chainId}`)
+      throw new NetworkError(`No provider configured for chain ID ${chainId}`, { chainId })
     }
     return provider
   }
 
   /**
-   * Get WebSocket provider for real-time data
+   * Get WebSocket provider for real-time data with error handling
    */
   async getWebSocketProvider(chainId: number): Promise<ethers.WebSocketProvider> {
     if (!this.wsUrls) {
-      throw new Error("WebSocket URLs not configured")
+      throw new NetworkError("WebSocket URLs not configured", { chainId })
     }
 
     const wsUrl = this.wsUrls.get(chainId)
     if (!wsUrl) {
-      throw new Error(`No WebSocket URL configured for chain ID ${chainId}`)
+      throw new NetworkError(`No WebSocket URL configured for chain ID ${chainId}`, { chainId })
     }
 
     let wsProvider = this.wsProviders.get(chainId)
     if (!wsProvider || wsProvider.websocket.readyState === WebSocket.CLOSED) {
-      wsProvider = new ethers.WebSocketProvider(wsUrl)
-      this.wsProviders.set(chainId, wsProvider)
+      try {
+        wsProvider = new ethers.WebSocketProvider(wsUrl)
+        this.wsProviders.set(chainId, wsProvider)
 
-      // Setup reconnection logic
-      this.setupWebSocketReconnect(chainId, wsUrl)
+        // Setup reconnection logic
+        this.setupWebSocketReconnect(chainId, wsUrl)
+      } catch (error) {
+        throw new NetworkError(
+          `Failed to create WebSocket provider for chain ${chainId}: ${getErrorMessage(error)}`,
+          { chainId, wsUrl },
+        )
+      }
     }
 
     return wsProvider
   }
 
   /**
-   * Setup WebSocket reconnection
+   * Setup WebSocket reconnection with improved error handling
    */
   private setupWebSocketReconnect(chainId: number, wsUrl: string): void {
     const provider = this.wsProviders.get(chainId)
     if (!provider) return
 
-    provider.websocket.onclose = () => {
-      logger.warn(`WebSocket closed for chain ${chainId}, reconnecting...`)
-      
+    let reconnectAttempts = 0
+    const maxReconnectAttempts = 10
+    const baseReconnectDelay = 5000
+    const maxReconnectDelay = 60000
+
+    const reconnect = async (): Promise<void> => {
+      if (reconnectAttempts >= maxReconnectAttempts) {
+        logger.error(`Max reconnection attempts (${maxReconnectAttempts}) reached for chain ${chainId}. WebSocket disabled.`)
+        return
+      }
+
+      reconnectAttempts++
+      const delay = Math.min(baseReconnectDelay * Math.pow(2, reconnectAttempts - 1), maxReconnectDelay)
+
+      // Clear existing timer
+      const existingTimer = this.reconnectTimers.get(chainId)
+      if (existingTimer) {
+        clearTimeout(existingTimer)
+      }
+
       const timer = setTimeout(async () => {
         try {
+          // Clean up old provider
+          const oldProvider = this.wsProviders.get(chainId)
+          if (oldProvider) {
+            try {
+              oldProvider.destroy()
+            } catch (error) {
+              logger.warn(`Error destroying old WebSocket provider for chain ${chainId}:`, error)
+            }
+          }
+
           const newProvider = new ethers.WebSocketProvider(wsUrl)
           this.wsProviders.set(chainId, newProvider)
           this.setupWebSocketReconnect(chainId, wsUrl)
-          logger.info(`WebSocket reconnected for chain ${chainId}`)
+          
+          // Reset attempts on successful connection
+          reconnectAttempts = 0
+          logger.info(`WebSocket reconnected for chain ${chainId} (attempt ${reconnectAttempts})`)
         } catch (error) {
-          logger.error(`Failed to reconnect WebSocket for chain ${chainId}:`, error)
+          logger.error(`Failed to reconnect WebSocket for chain ${chainId} (attempt ${reconnectAttempts}/${maxReconnectAttempts}):`, error)
+          // Retry reconnection
+          reconnect()
         }
-      }, 5000)
+      }, delay)
 
       this.reconnectTimers.set(chainId, timer)
+    }
+
+    if ('onclose' in provider.websocket) {
+      (provider.websocket as any).onclose = (event: CloseEvent) => {
+        logger.warn(`WebSocket closed for chain ${chainId} (code: ${event.code}, reason: ${event.reason || 'unknown'}), reconnecting...`)
+        reconnect()
+      }
+    }
+
+    if ('onerror' in provider.websocket) {
+      (provider.websocket as any).onerror = (error: Event) => {
+        logger.error(`WebSocket error for chain ${chainId}:`, error)
+        // Don't reconnect on error - let onclose handle it
+      }
     }
   }
 
@@ -157,9 +210,10 @@ export class Web3DataProvider {
         baseFeePerGas: feeData.maxFeePerGas ? feeData.maxFeePerGas / BigInt(2) : undefined,
         pendingTransactions: pendingTxCount,
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error fetching block data for chain ${chainId}:`, error)
-      throw new NetworkError(`Failed to fetch block data: ${error.message}`, { chainId, error: error.message })
+      const errorMsg = getErrorMessage(error)
+      throw new NetworkError(`Failed to fetch block data: ${errorMsg}`, { chainId, error: errorMsg })
     }
   }
 
@@ -194,13 +248,14 @@ export class Web3DataProvider {
         balance: balance.toString(),
         decimals: Number(decimals),
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error fetching token balance:`, error)
-      throw new NetworkError(`Failed to fetch token balance: ${error.message}`, {
+      const errorMsg = getErrorMessage(error)
+      throw new NetworkError(`Failed to fetch token balance: ${errorMsg}`, {
         chainId,
         tokenAddress,
         walletAddress,
-        error: error.message,
+        error: errorMsg,
       })
     }
   }
@@ -213,12 +268,13 @@ export class Web3DataProvider {
       const provider = this.getProvider(chainId)
       const balance = await provider.getBalance(address)
       return balance.toString()
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error fetching native balance:`, error)
-      throw new NetworkError(`Failed to fetch native balance: ${error.message}`, {
+      const errorMsg = getErrorMessage(error)
+      throw new NetworkError(`Failed to fetch native balance: ${errorMsg}`, {
         chainId,
         address,
-        error: error.message,
+        error: errorMsg,
       })
     }
   }
@@ -249,15 +305,16 @@ export class Web3DataProvider {
         gasLimit: tx.gasLimit,
         nonce: tx.nonce,
         blockNumber: tx.blockNumber || undefined,
-        status: receipt?.status,
-        timestamp: block?.timestamp,
+        status: receipt?.status ?? undefined,
+        timestamp: block?.timestamp ?? undefined,
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error fetching transaction:`, error)
-      throw new NetworkError(`Failed to fetch transaction: ${error.message}`, {
+      const errorMsg = getErrorMessage(error)
+      throw new NetworkError(`Failed to fetch transaction: ${errorMsg}`, {
         chainId,
         txHash,
-        error: error.message,
+        error: errorMsg,
       })
     }
   }
@@ -276,12 +333,13 @@ export class Web3DataProvider {
         bytecode: code,
         verified: code !== "0x",
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error fetching contract data:`, error)
-      throw new NetworkError(`Failed to fetch contract data: ${error.message}`, {
+      const errorMsg = getErrorMessage(error)
+      throw new NetworkError(`Failed to fetch contract data: ${errorMsg}`, {
         chainId,
         address,
-        error: error.message,
+        error: errorMsg,
       })
     }
   }
@@ -303,11 +361,12 @@ export class Web3DataProvider {
       })
 
       logger.info(`Started listening to blocks on chain ${chainId}`)
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error setting up block listener:`, error)
-      throw new NetworkError(`Failed to setup block listener: ${error.message}`, {
+      const errorMsg = getErrorMessage(error)
+      throw new NetworkError(`Failed to setup block listener: ${errorMsg}`, {
         chainId,
-        error: error.message,
+        error: errorMsg,
       })
     }
   }
@@ -333,11 +392,12 @@ export class Web3DataProvider {
       })
 
       logger.info(`Started listening to pending transactions on chain ${chainId}`)
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error setting up pending transaction listener:`, error)
-      throw new NetworkError(`Failed to setup pending transaction listener: ${error.message}`, {
+      const errorMsg = getErrorMessage(error)
+      throw new NetworkError(`Failed to setup pending transaction listener: ${errorMsg}`, {
         chainId,
-        error: error.message,
+        error: errorMsg,
       })
     }
   }
@@ -356,14 +416,15 @@ export class Web3DataProvider {
 
       return {
         gasPrice: feeData.gasPrice || BigInt(0),
-        maxFeePerGas: feeData.maxFeePerGas,
-        maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+        maxFeePerGas: feeData.maxFeePerGas ?? undefined,
+        maxPriorityFeePerGas: feeData.maxPriorityFeePerGas ?? undefined,
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error fetching gas price:`, error)
-      throw new NetworkError(`Failed to fetch gas price: ${error.message}`, {
+      const errorMsg = getErrorMessage(error)
+      throw new NetworkError(`Failed to fetch gas price: ${errorMsg}`, {
         chainId,
-        error: error.message,
+        error: errorMsg,
       })
     }
   }

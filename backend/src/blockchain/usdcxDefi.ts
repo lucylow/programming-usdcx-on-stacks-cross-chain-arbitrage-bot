@@ -5,7 +5,7 @@
 
 import { StacksClient } from "./stacksClient"
 import { logger } from "../utils/logger"
-import { USDCxError, ValidationError, NetworkError } from "../utils/errors"
+import { USDCxError, ValidationError, NetworkError, getErrorMessage } from "../utils/errors"
 import { retry } from "../utils/retry"
 import {
   uintCV,
@@ -123,9 +123,9 @@ export class USDCxDefiService {
 
       logger.info(`Staked ${amount} USDCx for ${periodDays} days. TX: ${txId}`)
       return parseInt(txId, 16) // Return stake ID (simplified)
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Staking failed:", error)
-      throw new USDCxError(`Failed to stake USDCx: ${error.message}`, "stake", { amount, periodDays })
+      throw new USDCxError(`Failed to stake USDCx: ${getErrorMessage(error)}`, "stake", { amount, periodDays })
     }
   }
 
@@ -152,9 +152,9 @@ export class USDCxDefiService {
 
       logger.info(`Unstaked position ${stakeId}. TX: ${txId}`)
       return txId
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Unstaking failed:", error)
-      throw new USDCxError(`Failed to unstake: ${error.message}`, "unstake", { stakeId })
+      throw new USDCxError(`Failed to unstake: ${getErrorMessage(error)}`, "unstake", { stakeId })
     }
   }
 
@@ -181,9 +181,9 @@ export class USDCxDefiService {
 
       logger.info(`Claimed rewards for stake ${stakeId}. TX: ${txId}`)
       return txId
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Claim rewards failed:", error)
-      throw new USDCxError(`Failed to claim rewards: ${error.message}`, "claim-rewards", { stakeId })
+      throw new USDCxError(`Failed to claim rewards: ${getErrorMessage(error)}`, "claim-rewards", { stakeId })
     }
   }
 
@@ -226,7 +226,7 @@ export class USDCxDefiService {
         active: position.active.value,
         pendingRewards: pendingRewards / 1e6,
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Failed to get stake position:", error)
       return null
     }
@@ -248,7 +248,7 @@ export class USDCxDefiService {
       })
 
       return parseInt(rewards.value, 16)
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Failed to get pending rewards:", error)
       return 0
     }
@@ -268,7 +268,7 @@ export class USDCxDefiService {
       })
 
       return parseInt(total.value, 16) / 1e6
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Failed to get total staked:", error)
       return 0
     }
@@ -307,9 +307,9 @@ export class USDCxDefiService {
 
       logger.info(`Supplied ${amount} USDCx to lending pool. TX: ${txId}`)
       return txId
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Supply failed:", error)
-      throw new USDCxError(`Failed to supply USDCx: ${error.message}`, "supply", { amount })
+      throw new USDCxError(`Failed to supply USDCx: ${getErrorMessage(error)}`, "supply", { amount })
     }
   }
 
@@ -342,9 +342,9 @@ export class USDCxDefiService {
 
       logger.info(`Withdrew ${amount} USDCx from lending pool. TX: ${txId}`)
       return txId
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Withdraw failed:", error)
-      throw new USDCxError(`Failed to withdraw USDCx: ${error.message}`, "withdraw", { amount })
+      throw new USDCxError(`Failed to withdraw USDCx: ${getErrorMessage(error)}`, "withdraw", { amount })
     }
   }
 
@@ -378,9 +378,9 @@ export class USDCxDefiService {
 
       logger.info(`Borrowed ${amount} USDCx with ${collateralAmount} collateral. TX: ${txId}`)
       return txId
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Borrow failed:", error)
-      throw new USDCxError(`Failed to borrow USDCx: ${error.message}`, "borrow", { amount, collateralAmount })
+      throw new USDCxError(`Failed to borrow USDCx: ${getErrorMessage(error)}`, "borrow", { amount, collateralAmount })
     }
   }
 
@@ -413,9 +413,9 @@ export class USDCxDefiService {
 
       logger.info(`Repaid ${amount} USDCx. TX: ${txId}`)
       return txId
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Repay failed:", error)
-      throw new USDCxError(`Failed to repay USDCx: ${error.message}`, "repay", { amount })
+      throw new USDCxError(`Failed to repay USDCx: ${getErrorMessage(error)}`, "repay", { amount })
     }
   }
 
@@ -447,7 +447,7 @@ export class USDCxDefiService {
         interestEarned: parseInt(position["interest-earned"].value, 16) / 1e6,
         lastUpdateBlock: parseInt(position["last-update-block"].value, 16),
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Failed to get lending position:", error)
       return null
     }
@@ -485,7 +485,7 @@ export class USDCxDefiService {
         lastUpdateBlock: parseInt(position["last-update-block"].value, 16),
         active: position.active.value,
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Failed to get borrowing position:", error)
       return null
     }
@@ -519,9 +519,9 @@ export class USDCxDefiService {
         lendingRate: parseInt(stats["lending-rate"].value, 16) / 100, // Convert from basis points to percentage
         borrowingRate: parseInt(stats["borrowing-rate"].value, 16) / 100,
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Failed to get pool stats:", error)
-      throw new NetworkError(`Failed to get pool statistics: ${error.message}`)
+      throw new NetworkError(`Failed to get pool statistics: ${getErrorMessage(error)}`)
     }
   }
 }

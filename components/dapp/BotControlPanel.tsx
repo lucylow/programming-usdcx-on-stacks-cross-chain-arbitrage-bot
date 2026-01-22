@@ -5,6 +5,7 @@ import { Play, Pause, RefreshCw, Activity, Zap, TrendingUp, DollarSign } from "l
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDapp } from "@/lib/dapp/DappProvider"
 import { toast } from "sonner"
 
@@ -55,86 +56,124 @@ export function BotControlPanel() {
           <h3 className="text-lg font-semibold">Bot Status: {botStatus?.running ? "Running" : "Stopped"}</h3>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="border-white/20 bg-transparent"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
-          </Button>
-          <Button
-            onClick={handleToggleBot}
-            disabled={isToggling || !wallet.connected}
-            className={botStatus?.running ? "bg-error hover:bg-error/80" : "bg-accent hover:bg-accent/80"}
-          >
-            {isToggling ? (
-              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-            ) : botStatus?.running ? (
-              <Pause className="w-4 h-4 mr-2" />
-            ) : (
-              <Play className="w-4 h-4 mr-2" />
-            )}
-            {botStatus?.running ? "Stop Bot" : "Start Bot"}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isLoading}
+                className="border-white/20 bg-transparent"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh bot status and data</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Button
+                  onClick={handleToggleBot}
+                  disabled={isToggling || !wallet.connected}
+                  className={botStatus?.running ? "bg-error hover:bg-error/80" : "bg-accent hover:bg-accent/80"}
+                >
+                  {isToggling ? (
+                    <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                  ) : botStatus?.running ? (
+                    <Pause className="w-4 h-4 mr-2" />
+                  ) : (
+                    <Play className="w-4 h-4 mr-2" />
+                  )}
+                  {botStatus?.running ? "Stop Bot" : "Start Bot"}
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {!wallet.connected
+                ? "Connect your wallet to control the bot"
+                : botStatus?.running
+                  ? "Stop the arbitrage bot"
+                  : "Start the arbitrage bot"}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-black/20 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-muted-foreground mb-2">
-            <Activity className="w-4 h-4" />
-            <span className="text-xs">Active Trades</span>
-          </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="bg-black/20 rounded-lg p-4 cursor-help">
+              <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                <Activity className="w-4 h-4" />
+                <span className="text-xs">Active Trades</span>
+              </div>
           {isLoading ? (
             <Skeleton className="h-8 w-16" />
           ) : (
             <div className="text-2xl font-bold text-white">{botStatus?.activeTrades || 0}</div>
           )}
-        </div>
-
-        <div className="bg-black/20 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-muted-foreground mb-2">
-            <Zap className="w-4 h-4" />
-            <span className="text-xs">Opportunities</span>
-          </div>
-          {isLoading ? (
-            <Skeleton className="h-8 w-16" />
-          ) : (
-            <div className="text-2xl font-bold text-white">{botStatus?.opportunitiesDetected || 0}</div>
-          )}
-        </div>
-
-        <div className="bg-black/20 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-muted-foreground mb-2">
-            <TrendingUp className="w-4 h-4" />
-            <span className="text-xs">Win Rate</span>
-          </div>
-          {isLoading ? (
-            <Skeleton className="h-8 w-16" />
-          ) : (
-            <div className="text-2xl font-bold text-accent">{((botStatus?.winRate || 0) * 100).toFixed(1)}%</div>
-          )}
-        </div>
-
-        <div className="bg-black/20 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-muted-foreground mb-2">
-            <DollarSign className="w-4 h-4" />
-            <span className="text-xs">Total Profit</span>
-          </div>
-          {isLoading ? (
-            <Skeleton className="h-8 w-20" />
-          ) : (
-            <div className="text-2xl font-bold text-accent">
-              $
-              {(botStatus?.totalProfit || 0).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
             </div>
-          )}
-        </div>
+          </TooltipTrigger>
+          <TooltipContent>Number of trades currently being executed</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="bg-black/20 rounded-lg p-4 cursor-help">
+              <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                <Zap className="w-4 h-4" />
+                <span className="text-xs">Opportunities</span>
+              </div>
+              {isLoading ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <div className="text-2xl font-bold text-white">{botStatus?.opportunitiesDetected || 0}</div>
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>Total arbitrage opportunities detected</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="bg-black/20 rounded-lg p-4 cursor-help">
+              <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                <TrendingUp className="w-4 h-4" />
+                <span className="text-xs">Win Rate</span>
+              </div>
+              {isLoading ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <div className="text-2xl font-bold text-accent">{((botStatus?.winRate || 0) * 100).toFixed(1)}%</div>
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>Percentage of successful trades</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="bg-black/20 rounded-lg p-4 cursor-help">
+              <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                <DollarSign className="w-4 h-4" />
+                <span className="text-xs">Total Profit</span>
+              </div>
+              {isLoading ? (
+                <Skeleton className="h-8 w-20" />
+              ) : (
+                <div className="text-2xl font-bold text-accent">
+                  $
+                  {(botStatus?.totalProfit || 0).toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </div>
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>Total profit from all executed trades</TooltipContent>
+        </Tooltip>
       </div>
 
       {!wallet.connected && (

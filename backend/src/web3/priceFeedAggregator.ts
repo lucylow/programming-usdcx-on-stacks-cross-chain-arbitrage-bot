@@ -5,7 +5,7 @@
 
 import axios, { AxiosInstance } from "axios"
 import { logger } from "../utils/logger"
-import { PriceOracleError, NetworkError } from "../utils/errors"
+import { PriceOracleError, NetworkError, getErrorMessage } from "../utils/errors"
 
 export interface PriceData {
   symbol: string
@@ -75,8 +75,8 @@ export class PriceFeedAggregator {
         change24h: data.usd_24h_change,
         confidence: 0.9,
       }
-    } catch (error: any) {
-      logger.warn(`CoinGecko price fetch failed for ${symbol}:`, error.message)
+    } catch (error: unknown) {
+      logger.warn(`CoinGecko price fetch failed for ${symbol}:`, getErrorMessage(error))
       return null
     }
   }
@@ -117,8 +117,8 @@ export class PriceFeedAggregator {
         change24h: quote.percent_change_24h,
         confidence: 0.95,
       }
-    } catch (error: any) {
-      logger.warn(`CoinMarketCap price fetch failed for ${symbol}:`, error.message)
+    } catch (error: unknown) {
+      logger.warn(`CoinMarketCap price fetch failed for ${symbol}:`, getErrorMessage(error))
       return null
     }
   }
@@ -148,8 +148,8 @@ export class PriceFeedAggregator {
         change24h: parseFloat(response.data.priceChangePercent),
         confidence: 0.85,
       }
-    } catch (error: any) {
-      logger.warn(`Binance price fetch failed for ${symbol}:`, error.message)
+    } catch (error: unknown) {
+      logger.warn(`Binance price fetch failed for ${symbol}:`, getErrorMessage(error))
       return null
     }
   }
@@ -192,8 +192,8 @@ export class PriceFeedAggregator {
         timestamp: Date.now(),
         confidence: 0.8,
       }
-    } catch (error: any) {
-      logger.warn(`1inch price fetch failed for ${symbol}:`, error.message)
+    } catch (error: unknown) {
+      logger.warn(`1inch price fetch failed for ${symbol}:`, getErrorMessage(error))
       return null
     }
   }

@@ -3,6 +3,7 @@ import {
   broadcastTransaction,
   AnchorMode,
   PostConditionMode,
+  type PostCondition,
   uintCV,
   principalCV,
   stringAsciiCV,
@@ -36,7 +37,7 @@ export interface StacksTransactionOptions {
   nonce?: number
   anchorMode?: AnchorMode
   postConditionMode?: PostConditionMode
-  postConditions?: unknown[]
+  postConditions?: PostCondition[]
   network?: StacksNetwork
 }
 
@@ -128,8 +129,10 @@ export class StacksClient {
   async estimateGas(options: Omit<StacksTransactionOptions, "senderKey" | "nonce">): Promise<GasEstimate> {
     try {
       const nonce = await this.getNonce()
+      const { postConditions, ...rest } = options
       const transaction = await makeContractCall({
-        ...options,
+        ...rest,
+        postConditions: (postConditions ?? []) as PostCondition[],
         senderKey: this.privateKey,
         nonce,
         network: this.network,
@@ -177,7 +180,7 @@ export class StacksClient {
         network: options.network || this.network,
         anchorMode: options.anchorMode || AnchorMode.Any,
         postConditionMode: options.postConditionMode || PostConditionMode.Deny,
-        postConditions: (options.postConditions ?? []) as Parameters<typeof makeContractCall>[0]["postConditions"],
+        postConditions: (options.postConditions ?? []) as PostCondition[],
         fee: options.fee,
       })
 
@@ -218,7 +221,7 @@ export class StacksClient {
       const functionArgs = options.functionArgs.map((arg) => {
         // Use type assertion to access internal serialize method if available
         // Otherwise, convert via JSON as fallback
-        const cvAny = arg as any
+        const cvAny = arg as { serialize?: () => Uint8Array }
         if (cvAny && typeof cvAny.serialize === 'function') {
           try {
             const serialized = cvAny.serialize()

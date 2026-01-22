@@ -57,11 +57,27 @@ export interface PerformanceMetrics {
   sharpeRatio: number
 }
 
+export interface ApiError {
+  code: string
+  message: string
+  details?: unknown
+  retryable?: boolean
+}
+
+export interface ApiResponse<T = unknown> {
+  success: boolean
+  data?: T
+  error?: ApiError
+  timestamp: string
+}
+
 class ApiClient {
   private baseUrl: string
+  private defaultTimeout: number
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, defaultTimeout = 30000) {
     this.baseUrl = baseUrl
+    this.defaultTimeout = defaultTimeout
   }
 
   private async fetch<T>(endpoint: string, options?: RequestInit, retries = 3): Promise<T> {
@@ -83,26 +99,32 @@ class ApiClient {
 
         clearTimeout(timeoutId)
 
-        if (!response.ok) {
-          // Try to parse error message from response
-          let errorMessage = `API error: ${response.statusText}`
-          try {
-            const errorData = await response.json()
-            errorMessage = errorData.message || errorData.error || errorMessage
-          } catch {
-            // Ignore JSON parse errors
+        const data: ApiResponse<T> = await response.json()
+
+        if (!response.ok || !data.success) {
+          const error = data.error || {
+            code: `HTTP_${response.status}`,
+            message: response.statusText || "Unknown error",
+            retryable: response.status >= 500,
           }
 
-          // Don't retry on client errors (4xx)
-          if (response.status >= 400 && response.status < 500) {
-            throw new Error(errorMessage)
+          // Don't retry on client errors (4xx) unless it's a retryable error
+          if (response.status >= 400 && response.status < 500 && !error.retryable) {
+            const apiError = new Error(error.message) as Error & { code?: string; retryable?: boolean }
+            apiError.code = error.code
+            apiError.retryable = error.retryable
+            throw apiError
           }
 
-          // Retry on server errors (5xx) or network errors
-          throw new Error(errorMessage)
+          // Retry on server errors (5xx) or retryable errors
+          const apiError = new Error(error.message) as Error & { code?: string; retryable?: boolean }
+          apiError.code = error.code
+          apiError.retryable = error.retryable || response.status >= 500
+          throw apiError
         }
 
-        return response.json()
+        // Return data from successful response
+        return (data.data ?? data) as T
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error))
 

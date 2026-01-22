@@ -61,6 +61,35 @@ export class ExecutionManager {
     return this.stacksClient
   }
 
+  /**
+   * Type-safe helper to extract number from step params
+   */
+  private getNumberParam(params: Record<string, unknown>, key: string, defaultValue = 0): number {
+    const value = params[key]
+    if (typeof value === "number") {
+      return value
+    }
+    if (typeof value === "string") {
+      const parsed = parseFloat(value)
+      return isNaN(parsed) ? defaultValue : parsed
+    }
+    return defaultValue
+  }
+
+  /**
+   * Type-safe helper to extract string from step params
+   */
+  private getStringParam(params: Record<string, unknown>, key: string, defaultValue = ""): string {
+    const value = params[key]
+    if (typeof value === "string") {
+      return value
+    }
+    if (typeof value !== "undefined" && value !== null) {
+      return String(value)
+    }
+    return defaultValue
+  }
+
   async executeTrade(opportunity: ArbitrageOpportunity): Promise<TradeResult> {
     // Validate opportunity
     if (!opportunity) {
@@ -283,7 +312,9 @@ export class ExecutionManager {
   }
 
   private async executeApprove(step: ExecutionStep): Promise<string> {
-    logger.info(`Approving ${step.params.amount} tokens for ${step.params.spender}`)
+    const amount = this.getNumberParam(step.params, "amount")
+    const spender = this.getStringParam(step.params, "spender")
+    logger.info(`Approving ${amount} tokens for ${spender}`)
 
     // In production, this would call the actual blockchain
     await this.simulateTransaction(1000)
@@ -292,7 +323,8 @@ export class ExecutionManager {
   }
 
   private async executeSwap(step: ExecutionStep, opportunity: ArbitrageOpportunity): Promise<string> {
-    logger.info(`Swapping ${step.params.amountIn || step.params.amount} on ${step.chain}`)
+    const amountIn = this.getNumberParam(step.params, "amountIn") || this.getNumberParam(step.params, "amount")
+    logger.info(`Swapping ${amountIn} on ${step.chain}`)
 
     if (step.chain === "stacks") {
       // Use Stacks DEX integration
@@ -302,10 +334,10 @@ export class ExecutionManager {
       const dex = StacksDexFactory.createDex(dexName || "alex", stacksClient)
 
       const swapParams = {
-        tokenIn: step.params.tokenIn || "",
-        tokenOut: step.params.tokenOut || "",
-        amountIn: step.params.amountIn || step.params.amount,
-        minAmountOut: step.params.minAmountOut || (step.params.amountIn || step.params.amount) * 0.99,
+        tokenIn: this.getStringParam(step.params, "tokenIn"),
+        tokenOut: this.getStringParam(step.params, "tokenOut"),
+        amountIn: amountIn,
+        minAmountOut: this.getNumberParam(step.params, "minAmountOut", amountIn * 0.99),
         recipient: stacksClient.getAddress(),
       }
 
@@ -328,15 +360,17 @@ export class ExecutionManager {
   }
 
   private async executeBridge(step: ExecutionStep, opportunity: ArbitrageOpportunity): Promise<string> {
-    logger.info(`Bridging ${step.params.amount} from ${step.chain}`)
+    const amount = this.getNumberParam(step.params, "amount")
+    const destinationAddress = this.getStringParam(step.params, "destinationAddress")
+    logger.info(`Bridging ${amount} from ${step.chain}`)
 
     try {
       // Validate bridge parameters
-      if (!step.params || !Number.isFinite(step.params.amount) || step.params.amount <= 0) {
+      if (!step.params || !Number.isFinite(amount) || amount <= 0) {
         throw new ValidationError("Invalid bridge amount")
       }
 
-      if (!step.params.destinationAddress) {
+      if (!destinationAddress) {
         throw new ValidationError("Destination address is required for bridge operation")
       }
 
@@ -348,13 +382,13 @@ export class ExecutionManager {
         const paymentRequest = await this.paymentProcessor.submitPayment({
           type: paymentType,
           chain: step.chain,
-          amount: step.params.amount,
-          recipientAddress: step.params.destinationAddress,
+          amount: amount,
+          recipientAddress: destinationAddress,
           priority,
           metadata: {
             step: step.step,
             opportunityId: opportunity.id,
-            attestation: step.params.attestation,
+            attestation: this.getStringParam(step.params, "attestation"),
           },
         })
 
@@ -388,7 +422,7 @@ export class ExecutionManager {
       // Execute bridge with retry
       if (opportunity.direction === "eth_to_stacks") {
         bridgeOp = await retry(
-          () => this.bridge.depositToStacks(step.params.amount, step.params.destinationAddress),
+          () => this.bridge.depositToStacks(amount, destinationAddress),
           {
             maxRetries: 3,
             initialDelay: 2000,
@@ -398,16 +432,17 @@ export class ExecutionManager {
           },
         )
       } else {
-        if (!step.params.attestation) {
+        const attestation = this.getStringParam(step.params, "attestation")
+        if (!attestation) {
           throw new ValidationError("Attestation is required for withdrawal")
         }
 
         bridgeOp = await retry(
           () =>
             this.bridge.withdrawToEthereum(
-              step.params.amount,
-              step.params.destinationAddress,
-              step.params.attestation || "",
+              amount,
+              destinationAddress,
+              attestation,
             ),
           {
             maxRetries: 3,
@@ -448,7 +483,7 @@ export class ExecutionManager {
       throw new BridgeError("Bridge execution failed", {
         step: step.step,
         chain: step.chain,
-        amount: step.params.amount,
+        amount: this.getNumberParam(step.params, "amount"),
         originalError: error,
       })
     }
