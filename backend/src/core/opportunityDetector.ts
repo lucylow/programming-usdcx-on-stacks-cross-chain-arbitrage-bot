@@ -1,5 +1,7 @@
 import type { PriceData } from "../config/types"
-import { logger } from "../monitoring/logger"
+import { logger } from "../utils/logger"
+import { PriceOracleError, ValidationError } from "../utils/errors"
+import { retry } from "../utils/retry"
 
 export interface ArbitrageOpportunity {
   id: string
@@ -37,34 +39,74 @@ export class OpportunityDetector {
   private opportunityTTL = 30000 // 30 seconds
 
   async detectOpportunities(prices: PriceData[]): Promise<ArbitrageOpportunity[]> {
-    const opportunities: ArbitrageOpportunity[] = []
+    try {
+      // Validate input
+      if (!prices || prices.length === 0) {
+        throw new ValidationError("Price data is required for opportunity detection")
+      }
 
-    // Group prices by chain
-    const ethPrices = prices.filter((p) => p.chain === "ethereum")
-    const stacksPrices = prices.filter((p) => p.chain === "stacks")
+      const opportunities: ArbitrageOpportunity[] = []
 
-    // Compare all ETH vs Stacks price combinations
-    for (const ethPrice of ethPrices) {
-      for (const stacksPrice of stacksPrices) {
-        // Only compare same trading pairs (e.g., USDC/ETH vs USDCx/STX)
-        if (this.areSimilarPairs(ethPrice.pair, stacksPrice.pair)) {
-          const opportunity = await this.evaluateSpread(ethPrice, stacksPrice)
+      // Group prices by chain
+      const ethPrices = prices.filter((p) => p.chain === "ethereum")
+      const stacksPrices = prices.filter((p) => p.chain === "stacks")
 
-          if (opportunity && opportunity.expectedProfit >= this.minProfitThreshold) {
-            opportunities.push(opportunity)
+      // Validate we have prices from both chains
+      if (ethPrices.length === 0 || stacksPrices.length === 0) {
+        logger.warn("Insufficient price data: missing prices from one or both chains")
+        return []
+      }
+
+      // Compare all ETH vs Stacks price combinations
+      for (const ethPrice of ethPrices) {
+        for (const stacksPrice of stacksPrices) {
+          try {
+            // Only compare same trading pairs (e.g., USDC/ETH vs USDCx/STX)
+            if (this.areSimilarPairs(ethPrice.pair, stacksPrice.pair)) {
+              const opportunity = await this.evaluateSpread(ethPrice, stacksPrice)
+
+              if (opportunity && opportunity.expectedProfit >= this.minProfitThreshold) {
+                opportunities.push(opportunity)
+              }
+            }
+          } catch (error) {
+            logger.error(
+              `Error evaluating spread between ${ethPrice.pair} and ${stacksPrice.pair}:`,
+              error,
+            )
+            // Continue with other pairs
           }
         }
       }
-    }
 
-    // Rank opportunities by risk-adjusted profit
-    return this.rankOpportunities(opportunities)
+      // Rank opportunities by risk-adjusted profit
+      return this.rankOpportunities(opportunities)
+    } catch (error) {
+      logger.error("Error detecting opportunities:", error)
+      throw new PriceOracleError("Failed to detect opportunities", undefined, { originalError: error })
+    }
   }
 
   private async evaluateSpread(ethPrice: PriceData, stacksPrice: PriceData): Promise<ArbitrageOpportunity | null> {
     try {
+      // Validate price data
+      if (!ethPrice || !stacksPrice) {
+        throw new ValidationError("Both price data objects are required")
+      }
+
+      if (ethPrice.price <= 0 || stacksPrice.price <= 0) {
+        logger.warn(`Invalid price detected: ETH=${ethPrice.price}, Stacks=${stacksPrice.price}`)
+        return null
+      }
+
       // Calculate raw spread
       const spread = Math.abs(ethPrice.price - stacksPrice.price) / Math.min(ethPrice.price, stacksPrice.price)
+
+      // Validate spread calculation
+      if (!Number.isFinite(spread) || spread < 0) {
+        logger.warn(`Invalid spread calculated: ${spread}`)
+        return null
+      }
 
       // Skip if spread is too small
       if (spread < this.minProfitThreshold * 2) {
@@ -81,8 +123,23 @@ export class OpportunityDetector {
         direction === "eth_to_stacks" ? stacksPrice : ethPrice,
       )
 
-      // Estimate all costs
-      const costs = await this.estimateTotalCosts(direction, inputAmount)
+      // Estimate all costs with retry
+      const costs = await retry(
+        () => this.estimateTotalCosts(direction, inputAmount),
+        {
+          maxRetries: 2,
+          initialDelay: 500,
+          onRetry: (attempt) => {
+            logger.warn(`Retrying cost estimation (attempt ${attempt})`)
+          },
+        },
+      )
+
+      // Validate costs
+      if (!costs || !Number.isFinite(costs.total)) {
+        logger.warn("Invalid cost estimation received")
+        return null
+      }
 
       // Calculate expected output
       const expectedOutput = this.calculateExpectedOutput(
@@ -92,12 +149,18 @@ export class OpportunityDetector {
         costs,
       )
 
+      // Validate expected output
+      if (!Number.isFinite(expectedOutput) || expectedOutput <= 0) {
+        logger.warn(`Invalid expected output calculated: ${expectedOutput}`)
+        return null
+      }
+
       // Calculate profit
       const expectedProfit = expectedOutput - inputAmount - costs.total
       const profitPercentage = expectedProfit / inputAmount
 
       // Validate profitability
-      if (profitPercentage < this.minProfitThreshold) {
+      if (!Number.isFinite(profitPercentage) || profitPercentage < this.minProfitThreshold) {
         return null
       }
 
@@ -142,26 +205,57 @@ export class OpportunityDetector {
 
       return opportunity
     } catch (error) {
-      logger.error("Error evaluating spread:", error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      logger.error(`Error evaluating spread between ${ethPrice?.pair} and ${stacksPrice?.pair}:`, errorMessage)
+      
+      // Return null for non-critical errors, but log them
+      if (error instanceof ValidationError) {
+        return null
+      }
+      
+      // For other errors, return null but log for monitoring
       return null
     }
   }
 
   private calculateOptimalSize(sourcePrice: PriceData, destPrice: PriceData): number {
-    // Consider available liquidity on both sides
-    const maxByLiquidity = Math.min(
-      sourcePrice.liquidity * 0.05, // Use max 5% of liquidity
-      destPrice.liquidity * 0.05,
-    )
+    try {
+      // Validate input
+      if (!sourcePrice || !destPrice) {
+        throw new ValidationError("Both source and destination prices are required")
+      }
 
-    // Consider configured max position size
-    const maxPositionSize = 10000 // $10k max per trade
+      if (sourcePrice.liquidity <= 0 || destPrice.liquidity <= 0) {
+        logger.warn("Invalid liquidity detected in optimal size calculation")
+        return 1000 // Return minimum safe size
+      }
 
-    // Calculate optimal size based on slippage impact
-    const optimalBySlippage = this.calculateOptimalBySlippage(sourcePrice.liquidity, destPrice.liquidity)
+      // Consider available liquidity on both sides
+      const maxByLiquidity = Math.min(
+        sourcePrice.liquidity * 0.05, // Use max 5% of liquidity
+        destPrice.liquidity * 0.05,
+      )
 
-    // Return minimum of all constraints
-    return Math.min(maxByLiquidity, maxPositionSize, optimalBySlippage)
+      // Consider configured max position size
+      const maxPositionSize = 10000 // $10k max per trade
+
+      // Calculate optimal size based on slippage impact
+      const optimalBySlippage = this.calculateOptimalBySlippage(sourcePrice.liquidity, destPrice.liquidity)
+
+      // Return minimum of all constraints, with a floor
+      const optimalSize = Math.min(maxByLiquidity, maxPositionSize, optimalBySlippage)
+      
+      // Ensure we return a valid positive number
+      if (!Number.isFinite(optimalSize) || optimalSize <= 0) {
+        logger.warn("Calculated optimal size is invalid, using minimum")
+        return 1000
+      }
+
+      return Math.max(1000, optimalSize) // Minimum $1000
+    } catch (error) {
+      logger.error("Error calculating optimal size:", error)
+      return 1000 // Return safe minimum on error
+    }
   }
 
   private calculateOptimalBySlippage(sourceLiquidity: number, destLiquidity: number): number {
@@ -179,35 +273,61 @@ export class OpportunityDetector {
     direction: "eth_to_stacks" | "stacks_to_eth",
     amount: number,
   ): Promise<{ gas: number; bridge: number; slippage: number; dexFees: number; total: number }> {
-    const costs = {
-      gas: 0,
-      bridge: 0,
-      slippage: 0,
-      dexFees: 0,
-      total: 0,
+    try {
+      // Validate input
+      if (!direction || (direction !== "eth_to_stacks" && direction !== "stacks_to_eth")) {
+        throw new ValidationError("Invalid direction for cost estimation")
+      }
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new ValidationError(`Invalid amount for cost estimation: ${amount}`)
+      }
+
+      const costs = {
+        gas: 0,
+        bridge: 0,
+        slippage: 0,
+        dexFees: 0,
+        total: 0,
+      }
+
+      // Gas costs (in USD)
+      if (direction === "eth_to_stacks") {
+        costs.gas = 50 // Ethereum gas ~$50
+        costs.gas += 2 // Stacks gas ~$2
+      } else {
+        costs.gas = 2 // Stacks gas ~$2
+        costs.gas += 50 // Ethereum gas ~$50
+      }
+
+      // Bridge fee (0.1% of amount)
+      costs.bridge = amount * 0.001
+
+      // Estimated slippage (0.5% per swap, 2 swaps total)
+      costs.slippage = amount * this.maxSlippage * 2
+
+      // DEX fees (0.3% per swap, 2 swaps total)
+      costs.dexFees = amount * 0.003 * 2
+
+      costs.total = costs.gas + costs.bridge + costs.slippage + costs.dexFees
+
+      // Validate all costs are finite
+      if (!Object.values(costs).every((v) => Number.isFinite(v) && v >= 0)) {
+        throw new ValidationError("Invalid cost calculation result")
+      }
+
+      return costs
+    } catch (error) {
+      logger.error("Error estimating total costs:", error)
+      // Return default costs on error
+      return {
+        gas: 52,
+        bridge: amount * 0.001,
+        slippage: amount * this.maxSlippage * 2,
+        dexFees: amount * 0.003 * 2,
+        total: 52 + amount * 0.001 + amount * this.maxSlippage * 2 + amount * 0.003 * 2,
+      }
     }
-
-    // Gas costs (in USD)
-    if (direction === "eth_to_stacks") {
-      costs.gas = 50 // Ethereum gas ~$50
-      costs.gas += 2 // Stacks gas ~$2
-    } else {
-      costs.gas = 2 // Stacks gas ~$2
-      costs.gas += 50 // Ethereum gas ~$50
-    }
-
-    // Bridge fee (0.1% of amount)
-    costs.bridge = amount * 0.001
-
-    // Estimated slippage (0.5% per swap, 2 swaps total)
-    costs.slippage = amount * this.maxSlippage * 2
-
-    // DEX fees (0.3% per swap, 2 swaps total)
-    costs.dexFees = amount * 0.003 * 2
-
-    costs.total = costs.gas + costs.bridge + costs.slippage + costs.dexFees
-
-    return costs
   }
 
   private calculateExpectedOutput(

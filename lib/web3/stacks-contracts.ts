@@ -11,8 +11,14 @@ import {
   PostConditionMode,
   FungibleConditionCode,
   makeStandardSTXPostCondition,
+  AnchorMode,
+  cvToJSON,
+  hexToCV,
+  TxBroadcastResultOk,
+  TxBroadcastResultRejected,
+  ClarityValue,
 } from "@stacks/transactions"
-import { StacksMainnet, StacksTestnet } from "@stacks/network"
+import { StacksMainnet, StacksTestnet, StacksNetwork } from "@stacks/network"
 
 // Contract addresses - update these after deployment
 const CONTRACT_ADDRESSES = {
@@ -36,6 +42,23 @@ const CONTRACT_ADDRESSES = {
 
 type NetworkType = "mainnet" | "testnet"
 
+export interface ReadOnlyCallOptions {
+  contractAddress: string
+  contractName: string
+  functionName: string
+  functionArgs: ClarityValue[]
+  senderAddress: string
+}
+
+export interface TransactionStatus {
+  txId: string
+  status: "pending" | "success" | "failed" | "abort_by_response" | "abort_by_post_condition"
+  txResult?: any
+  blockHeight?: number
+  blockHash?: string
+  error?: string
+}
+
 export class StacksContractService {
   private network: StacksMainnet | StacksTestnet
   private networkType: NetworkType
@@ -45,6 +68,137 @@ export class StacksContractService {
     this.networkType = networkType
     this.network = networkType === "mainnet" ? new StacksMainnet() : new StacksTestnet()
     this.addresses = CONTRACT_ADDRESSES[networkType]
+  }
+
+  /**
+   * Make a read-only contract call
+   */
+  async readOnlyCall<T = any>(options: ReadOnlyCallOptions): Promise<T> {
+    try {
+      const functionArgs = options.functionArgs.map((arg) => {
+        return arg.serialize().toString("hex")
+      })
+
+      const response = await fetch(
+        `${this.network.coreApiUrl}/v2/contracts/call-read/${options.contractAddress}/${options.contractName}/${options.functionName}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sender: options.senderAddress,
+            arguments: functionArgs,
+          }),
+        },
+      )
+
+      if (!response.ok) {
+        throw new Error(`Read-only call failed: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      
+      if (data.okay && data.result) {
+        const cv = hexToCV(data.result)
+        const json = cvToJSON(cv)
+        return json.value as T
+      }
+
+      throw new Error(`Read-only call returned error: ${data.error || "Unknown error"}`)
+    } catch (error: any) {
+      console.error("Read-only call failed:", error)
+      throw new Error(`Stacks read-only call failed: ${error.message}`)
+    }
+  }
+
+  /**
+   * Get transaction status
+   */
+  async getTransactionStatus(txId: string): Promise<TransactionStatus> {
+    try {
+      const response = await fetch(`${this.network.coreApiUrl}/extended/v1/tx/${txId}`)
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch transaction: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+
+      const status: TransactionStatus = {
+        txId,
+        status: data.tx_status as TransactionStatus["status"],
+        txResult: data.tx_result,
+        blockHeight: data.block_height,
+        blockHash: data.block_hash,
+      }
+
+      if (data.tx_status === "abort_by_response" || data.tx_status === "abort_by_post_condition") {
+        status.status = "failed"
+        status.error = data.tx_result?.repr || "Transaction aborted"
+      }
+
+      return status
+    } catch (error: any) {
+      console.error(`Failed to get transaction status for ${txId}:`, error)
+      return {
+        txId,
+        status: "pending",
+        error: error.message,
+      }
+    }
+  }
+
+  /**
+   * Wait for transaction confirmation
+   */
+  async waitForConfirmation(
+    txId: string,
+    timeoutMs = 300000, // 5 minutes
+    pollIntervalMs = 5000, // 5 seconds
+  ): Promise<TransactionStatus> {
+    const startTime = Date.now()
+
+    while (Date.now() - startTime < timeoutMs) {
+      const status = await this.getTransactionStatus(txId)
+
+      if (status.status === "success" || status.status === "failed") {
+        return status
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
+    }
+
+    throw new Error(`Transaction ${txId} confirmation timeout after ${timeoutMs}ms`)
+  }
+
+  /**
+   * Broadcast transaction with retry logic
+   */
+  private async broadcastWithRetry(
+    transaction: any,
+    maxRetries = 3,
+  ): Promise<string> {
+    let lastError: Error | null = null
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const broadcastResponse = await broadcastTransaction(transaction, this.network)
+
+        if (broadcastResponse.error) {
+          const error = (broadcastResponse as TxBroadcastResultRejected).error
+          throw new Error(`Transaction broadcast failed: ${error}`)
+        }
+
+        return (broadcastResponse as TxBroadcastResultOk).txid
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+        
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 1000 * attempt))
+        }
+      }
+    }
+
+    throw lastError || new Error("Transaction broadcast failed")
   }
 
   // ================ DAO GOVERNANCE ================
@@ -74,7 +228,8 @@ export class StacksContractService {
     }
 
     const transaction = await makeContractCall(txOptions)
-    return await broadcastTransaction(transaction, this.network)
+    const txId = await this.broadcastWithRetry(transaction)
+    return { txid: txId } as any
   }
 
   async voteOnProposal(
@@ -98,7 +253,8 @@ export class StacksContractService {
     }
 
     const transaction = await makeContractCall(txOptions)
-    return await broadcastTransaction(transaction, this.network)
+    const txId = await this.broadcastWithRetry(transaction)
+    return { txid: txId } as any
   }
 
   async executeProposal(senderKey: string, proposalId: number) {
@@ -114,7 +270,8 @@ export class StacksContractService {
     }
 
     const transaction = await makeContractCall(txOptions)
-    return await broadcastTransaction(transaction, this.network)
+    const txId = await this.broadcastWithRetry(transaction)
+    return { txid: txId } as any
   }
 
   // ================ GOVERNANCE TOKEN ================
@@ -131,7 +288,8 @@ export class StacksContractService {
     }
 
     const transaction = await makeContractCall(txOptions)
-    return await broadcastTransaction(transaction, this.network)
+    const txId = await this.broadcastWithRetry(transaction)
+    return { txid: txId } as any
   }
 
   async transferTokens(senderKey: string, senderAddress: string, recipient: string, amount: number) {
@@ -147,7 +305,8 @@ export class StacksContractService {
     }
 
     const transaction = await makeContractCall(txOptions)
-    return await broadcastTransaction(transaction, this.network)
+    const txId = await this.broadcastWithRetry(transaction)
+    return { txid: txId } as any
   }
 
   // ================ NFT MARKETPLACE ================
@@ -164,7 +323,8 @@ export class StacksContractService {
     }
 
     const transaction = await makeContractCall(txOptions)
-    return await broadcastTransaction(transaction, this.network)
+    const txId = await this.broadcastWithRetry(transaction)
+    return { txid: txId } as any
   }
 
   async listNFT(senderKey: string, nftId: number, price: number) {
@@ -180,7 +340,8 @@ export class StacksContractService {
     }
 
     const transaction = await makeContractCall(txOptions)
-    return await broadcastTransaction(transaction, this.network)
+    const txId = await this.broadcastWithRetry(transaction)
+    return { txid: txId } as any
   }
 
   async buyNFT(senderKey: string, senderAddress: string, listingId: number, price: number) {
@@ -198,7 +359,8 @@ export class StacksContractService {
     }
 
     const transaction = await makeContractCall(txOptions)
-    return await broadcastTransaction(transaction, this.network)
+    const txId = await this.broadcastWithRetry(transaction)
+    return { txid: txId } as any
   }
 
   async createAuction(senderKey: string, nftId: number, startPrice: number, reservePrice: number, duration: number) {
@@ -214,7 +376,8 @@ export class StacksContractService {
     }
 
     const transaction = await makeContractCall(txOptions)
-    return await broadcastTransaction(transaction, this.network)
+    const txId = await this.broadcastWithRetry(transaction)
+    return { txid: txId } as any
   }
 
   async placeBid(senderKey: string, senderAddress: string, auctionId: number, bidAmount: number) {
@@ -232,7 +395,8 @@ export class StacksContractService {
     }
 
     const transaction = await makeContractCall(txOptions)
-    return await broadcastTransaction(transaction, this.network)
+    const txId = await this.broadcastWithRetry(transaction)
+    return { txid: txId } as any
   }
 
   async settleAuction(senderKey: string, auctionId: number) {
@@ -248,7 +412,8 @@ export class StacksContractService {
     }
 
     const transaction = await makeContractCall(txOptions)
-    return await broadcastTransaction(transaction, this.network)
+    const txId = await this.broadcastWithRetry(transaction)
+    return { txid: txId } as any
   }
 
   async makeOffer(senderKey: string, senderAddress: string, nftId: number, amount: number, expiryBlocks: number) {
@@ -266,7 +431,8 @@ export class StacksContractService {
     }
 
     const transaction = await makeContractCall(txOptions)
-    return await broadcastTransaction(transaction, this.network)
+    const txId = await this.broadcastWithRetry(transaction)
+    return { txid: txId } as any
   }
 
   async acceptOffer(senderKey: string, nftId: number, offerer: string) {
@@ -282,7 +448,45 @@ export class StacksContractService {
     }
 
     const transaction = await makeContractCall(txOptions)
-    return await broadcastTransaction(transaction, this.network)
+    const txId = await this.broadcastWithRetry(transaction)
+    return { txid: txId } as any
+  }
+
+  // ================ ARBITRAGE VAULT ================
+  async getVaultStats(senderAddress: string) {
+    return await this.readOnlyCall<{
+      balance: { value: string }
+      "total-profit": { value: string }
+      "total-trades": { value: string }
+      paused: { value: boolean }
+    }>({
+      contractAddress: this.addresses.arbitrageVault.split(".")[0],
+      contractName: "arbitrage-vault",
+      functionName: "get-vault-stats",
+      functionArgs: [],
+      senderAddress,
+    })
+  }
+
+  async getTradeHistory(senderAddress: string, tradeId: number) {
+    return await this.readOnlyCall({
+      contractAddress: this.addresses.arbitrageVault.split(".")[0],
+      contractName: "arbitrage-vault",
+      functionName: "get-trade",
+      functionArgs: [uintCV(tradeId)],
+      senderAddress,
+    })
+  }
+
+  // ================ USDCX TOKEN ================
+  async getUSDCxBalance(senderAddress: string, address: string) {
+    return await this.readOnlyCall<{ value: string }>({
+      contractAddress: this.addresses.usdcxToken.split(".")[0],
+      contractName: "usdcx-token",
+      functionName: "get-balance",
+      functionArgs: [principalCV(address)],
+      senderAddress,
+    })
   }
 
   // ================ READ FUNCTIONS ================
@@ -290,15 +494,15 @@ export class StacksContractService {
     return this.addresses
   }
 
-  getNetwork() {
+  getNetwork(): StacksNetwork {
     return this.network
   }
 
-  getNetworkType() {
+  getNetworkType(): NetworkType {
     return this.networkType
   }
 }
 
 export const stacksContracts = new StacksContractService(
-  (process.env.NEXT_PUBLIC_STACKS_NETWORK as NetworkType) || "testnet",
+  ((import.meta.env.VITE_STACKS_NETWORK || import.meta.env.NEXT_PUBLIC_STACKS_NETWORK) as NetworkType) || "testnet",
 )

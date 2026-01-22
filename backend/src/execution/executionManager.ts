@@ -1,6 +1,11 @@
 import type { ArbitrageOpportunity, ExecutionStep } from "../core/opportunityDetector"
 import type { XReserveBridge, BridgeOperation } from "../bridge/xReserveBridge"
-import { logger } from "../monitoring/logger"
+import { StacksClient } from "../blockchain/stacksClient"
+import { StacksDexFactory } from "../blockchain/stacksDex"
+import { logger } from "../utils/logger"
+import { config } from "../config"
+import { ValidationError, ExecutionError } from "../utils/errors"
+import { retry } from "../utils/retry"
 
 export interface TradeResult {
   id: string
@@ -34,14 +39,35 @@ export interface TransactionRecord {
 
 export class ExecutionManager {
   private bridge: XReserveBridge
+  private stacksClient: StacksClient | null = null
   private activeTrades: Map<string, TradeResult> = new Map()
   private maxConcurrentTrades = 3
 
-  constructor(bridge: XReserveBridge) {
+  constructor(bridge: XReserveBridge, stacksClient?: StacksClient) {
     this.bridge = bridge
+    this.stacksClient = stacksClient || null
+  }
+
+  /**
+   * Initialize Stacks client if not provided
+   */
+  private getStacksClient(): StacksClient {
+    if (!this.stacksClient) {
+      this.stacksClient = new StacksClient(config.stacks)
+    }
+    return this.stacksClient
   }
 
   async executeTrade(opportunity: ArbitrageOpportunity): Promise<TradeResult> {
+    // Validate opportunity
+    if (!opportunity) {
+      throw new ValidationError("Opportunity is required for trade execution")
+    }
+
+    if (!opportunity.executionSteps || opportunity.executionSteps.length === 0) {
+      throw new ValidationError("Opportunity must have execution steps")
+    }
+
     const tradeId = this.generateTradeId()
     const startTime = Date.now()
 
@@ -69,35 +95,83 @@ export class ExecutionManager {
 
     try {
       // Validate opportunity is still valid
-      if (Date.now() > opportunity.expiresAt) {
-        throw new Error("Opportunity expired")
+      if (!Number.isFinite(opportunity.expiresAt) || Date.now() > opportunity.expiresAt) {
+        throw new ValidationError("Opportunity expired or has invalid expiration time")
       }
 
       // Check concurrent trade limit
       if (this.activeTrades.size > this.maxConcurrentTrades) {
-        throw new Error("Max concurrent trades reached")
+        throw new ValidationError(`Max concurrent trades reached (${this.maxConcurrentTrades})`)
       }
 
-      // Execute each step sequentially
+      // Execute each step sequentially with error recovery
       for (const step of opportunity.executionSteps) {
-        const stepResult = await this.executeStep(step, opportunity)
-        result.transactions.push(stepResult)
-        result.executedSteps++
+        try {
+          const stepResult = await retry(
+            () => this.executeStep(step, opportunity),
+            {
+              maxRetries: 2,
+              initialDelay: 1000,
+              onRetry: (attempt) => {
+                logger.warn(`Retrying step ${step.step} for trade ${tradeId} (attempt ${attempt})`)
+              },
+            },
+          )
 
-        if (stepResult.status === "failed") {
-          throw new Error(`Step ${step.step} failed: ${stepResult.error}`)
-        }
+          result.transactions.push(stepResult)
+          result.executedSteps++
 
-        // Update costs
-        if (step.chain === "ethereum") {
-          result.gasCostEth += stepResult.gasUsed || 0
-        } else {
-          result.gasCostStacks += stepResult.gasUsed || 0
+          if (stepResult.status === "failed") {
+            throw new ExecutionError(
+              `Step ${step.step} failed: ${stepResult.error || "Unknown error"}`,
+              step.step,
+              { tradeId, step: step.step, error: stepResult.error },
+            )
+          }
+
+          // Update costs with validation
+          const gasUsed = stepResult.gasUsed || 0
+          if (Number.isFinite(gasUsed) && gasUsed >= 0) {
+            if (step.chain === "ethereum") {
+              result.gasCostEth += gasUsed
+            } else {
+              result.gasCostStacks += gasUsed
+            }
+          }
+        } catch (error) {
+          // Log step failure but continue to record it
+          logger.error(`Step ${step.step} failed for trade ${tradeId}:`, error)
+
+          const failedStepResult: TransactionRecord = {
+            step: step.step,
+            chain: step.chain,
+            action: step.action,
+            status: "failed",
+            error: error instanceof Error ? error.message : String(error),
+            timestamp: Date.now(),
+          }
+
+          result.transactions.push(failedStepResult)
+          result.executedSteps++
+
+          // Re-throw to stop execution
+          throw error
         }
       }
 
-      // Calculate actual profit
+      // Calculate actual profit with validation
       result.actualProfit = this.calculateActualProfit(result, opportunity)
+
+      // Validate profit calculation
+      if (!Number.isFinite(result.actualProfit)) {
+        throw new ValidationError("Invalid profit calculation result")
+      }
+
+      // Validate input amount
+      if (!Number.isFinite(opportunity.inputAmount) || opportunity.inputAmount <= 0) {
+        throw new ValidationError("Invalid input amount for ROI calculation")
+      }
+
       result.roi = result.actualProfit / opportunity.inputAmount
       result.status = result.actualProfit > 0 ? "success" : "failed"
 
@@ -109,7 +183,13 @@ export class ExecutionManager {
     } catch (error: any) {
       logger.error(`Trade ${tradeId} failed:`, error)
       result.status = "failed"
-      result.error = error.message
+      result.error = error instanceof Error ? error.message : String(error)
+
+      // Determine if this is a partial success
+      if (result.executedSteps > 0 && result.executedSteps < result.totalSteps) {
+        result.status = "partial"
+        logger.warn(`Trade ${tradeId} partially executed: ${result.executedSteps}/${result.totalSteps} steps completed`)
+      }
     } finally {
       result.executionTime = Date.now() - startTime
       this.activeTrades.delete(tradeId)
@@ -119,6 +199,15 @@ export class ExecutionManager {
   }
 
   private async executeStep(step: ExecutionStep, opportunity: ArbitrageOpportunity): Promise<TransactionRecord> {
+    // Validate step
+    if (!step) {
+      throw new ValidationError("Execution step is required")
+    }
+
+    if (!step.action || !step.chain) {
+      throw new ValidationError("Execution step must have action and chain")
+    }
+
     const record: TransactionRecord = {
       step: step.step,
       chain: step.chain,
@@ -130,31 +219,51 @@ export class ExecutionManager {
     try {
       logger.info(`Executing step ${step.step}: ${step.action} on ${step.chain}`)
 
+      let txHash: string | undefined
+
       switch (step.action) {
         case "approve":
-          record.txHash = await this.executeApprove(step)
+          txHash = await this.executeApprove(step)
           break
 
         case "swap":
-          record.txHash = await this.executeSwap(step, opportunity)
+          txHash = await this.executeSwap(step, opportunity)
           break
 
         case "bridge":
-          record.txHash = await this.executeBridge(step, opportunity)
+          txHash = await this.executeBridge(step, opportunity)
           break
 
         default:
-          throw new Error(`Unknown action: ${step.action}`)
+          throw new ExecutionError(`Unknown action: ${step.action}`, step.step, { action: step.action })
+      }
+
+      // Validate transaction hash
+      if (!txHash || txHash.length === 0) {
+        throw new ExecutionError("Transaction hash is missing", step.step)
       }
 
       record.status = "success"
-      record.gasUsed = step.estimatedGas
+      record.txHash = txHash
+      record.gasUsed = step.estimatedGas || 0
 
       logger.info(`Step ${step.step} completed: ${record.txHash}`)
     } catch (error: any) {
       logger.error(`Step ${step.step} failed:`, error)
       record.status = "failed"
-      record.error = error.message
+      record.error = error instanceof Error ? error.message : String(error)
+
+      // Re-throw execution errors
+      if (error instanceof ExecutionError || error instanceof ValidationError) {
+        throw error
+      }
+
+      // Wrap other errors
+      throw new ExecutionError(`Step ${step.step} execution failed`, step.step, {
+        action: step.action,
+        chain: step.chain,
+        originalError: error,
+      })
     }
 
     return record
@@ -170,53 +279,163 @@ export class ExecutionManager {
   }
 
   private async executeSwap(step: ExecutionStep, opportunity: ArbitrageOpportunity): Promise<string> {
-    logger.info(`Swapping ${step.params.amountIn} on ${step.chain}`)
+    logger.info(`Swapping ${step.params.amountIn || step.params.amount} on ${step.chain}`)
 
-    // In production, this would call the DEX contract
-    await this.simulateTransaction(2000)
+    if (step.chain === "stacks") {
+      // Use Stacks DEX integration
+      const stacksClient = this.getStacksClient()
+      // Get DEX name from opportunity
+      const dexName = opportunity.destChain === "stacks" ? opportunity.destDex : opportunity.sourceDex
+      const dex = StacksDexFactory.createDex(dexName || "alex", stacksClient)
 
-    return this.generateTxHash()
+      const swapParams = {
+        tokenIn: step.params.tokenIn || "",
+        tokenOut: step.params.tokenOut || "",
+        amountIn: step.params.amountIn || step.params.amount,
+        minAmountOut: step.params.minAmountOut || (step.params.amountIn || step.params.amount) * 0.99,
+        recipient: stacksClient.getAddress(),
+      }
+
+      const txId = await dex.swap(swapParams)
+      
+      // Wait for confirmation
+      const status = await stacksClient.waitForConfirmation(txId, 300000)
+      
+      if (status.status === "failed") {
+        throw new Error(`Stacks swap failed: ${status.error || "Unknown error"}`)
+      }
+
+      return txId
+    } else {
+      // Ethereum swap - would use ethers.js here
+      // For now, simulate
+      await this.simulateTransaction(2000)
+      return this.generateTxHash()
+    }
   }
 
   private async executeBridge(step: ExecutionStep, opportunity: ArbitrageOpportunity): Promise<string> {
     logger.info(`Bridging ${step.params.amount} from ${step.chain}`)
 
     try {
+      // Validate bridge parameters
+      if (!step.params || !Number.isFinite(step.params.amount) || step.params.amount <= 0) {
+        throw new ValidationError("Invalid bridge amount")
+      }
+
+      if (!step.params.destinationAddress) {
+        throw new ValidationError("Destination address is required for bridge operation")
+      }
+
       let bridgeOp: BridgeOperation
 
+      // Execute bridge with retry
       if (opportunity.direction === "eth_to_stacks") {
-        bridgeOp = await this.bridge.depositToStacks(step.params.amount, step.params.destinationAddress)
+        bridgeOp = await retry(
+          () => this.bridge.depositToStacks(step.params.amount, step.params.destinationAddress),
+          {
+            maxRetries: 3,
+            initialDelay: 2000,
+            onRetry: (attempt) => {
+              logger.warn(`Retrying bridge deposit (attempt ${attempt})`)
+            },
+          },
+        )
       } else {
-        bridgeOp = await this.bridge.withdrawToEthereum(
-          step.params.amount,
-          step.params.destinationAddress,
-          step.params.attestation || "",
+        if (!step.params.attestation) {
+          throw new ValidationError("Attestation is required for withdrawal")
+        }
+
+        bridgeOp = await retry(
+          () =>
+            this.bridge.withdrawToEthereum(
+              step.params.amount,
+              step.params.destinationAddress,
+              step.params.attestation || "",
+            ),
+          {
+            maxRetries: 3,
+            initialDelay: 2000,
+            onRetry: (attempt) => {
+              logger.warn(`Retrying bridge withdrawal (attempt ${attempt})`)
+            },
+          },
         )
       }
 
+      // Validate bridge operation
+      if (!bridgeOp || !bridgeOp.id) {
+        throw new BridgeError("Bridge operation failed to initialize")
+      }
+
       // Wait for bridge completion (with timeout)
-      const completedOp = await this.bridge.waitForCompletion(
-        bridgeOp.id,
-        1800000, // 30 minutes timeout
+      const completedOp = await retry(
+        () => this.bridge.waitForCompletion(bridgeOp.id, 1800000), // 30 minutes timeout
+        {
+          maxRetries: 1, // Don't retry the wait itself
+          timeout: 1800000,
+        },
       )
+
+      if (!completedOp || (!completedOp.bridgeTxId && !completedOp.id)) {
+        throw new BridgeError("Bridge operation completed but no transaction ID available")
+      }
 
       return completedOp.bridgeTxId || completedOp.id
     } catch (error) {
       logger.error("Bridge execution failed:", error)
-      throw error
+
+      if (error instanceof BridgeError || error instanceof ValidationError || error instanceof TimeoutError) {
+        throw error
+      }
+
+      throw new BridgeError("Bridge execution failed", {
+        step: step.step,
+        chain: step.chain,
+        amount: step.params.amount,
+        originalError: error,
+      })
     }
   }
 
   private calculateActualProfit(result: TradeResult, opportunity: ArbitrageOpportunity): number {
-    // Calculate total costs
-    const totalCosts =
-      result.gasCostEth * 0.00000003 + // Convert gas to USD
-      result.gasCostStacks * 0.00000001 +
-      result.bridgeFee +
-      opportunity.estimatedSlippage
+    try {
+      // Validate inputs
+      if (!result || !opportunity) {
+        throw new ValidationError("Result and opportunity are required for profit calculation")
+      }
 
-    // Actual profit = expected output - input - actual costs
-    return opportunity.expectedOutput - opportunity.inputAmount - totalCosts
+      if (!Number.isFinite(opportunity.expectedOutput) || !Number.isFinite(opportunity.inputAmount)) {
+        throw new ValidationError("Invalid opportunity amounts for profit calculation")
+      }
+
+      // Calculate total costs with validation
+      const gasCostEthUsd = Number.isFinite(result.gasCostEth) ? result.gasCostEth * 0.00000003 : 0
+      const gasCostStacksUsd = Number.isFinite(result.gasCostStacks) ? result.gasCostStacks * 0.00000001 : 0
+      const bridgeFee = Number.isFinite(result.bridgeFee) ? result.bridgeFee : 0
+      const slippage = Number.isFinite(opportunity.estimatedSlippage) ? opportunity.estimatedSlippage : 0
+
+      const totalCosts = gasCostEthUsd + gasCostStacksUsd + bridgeFee + slippage
+
+      // Validate costs
+      if (!Number.isFinite(totalCosts) || totalCosts < 0) {
+        throw new ValidationError("Invalid cost calculation")
+      }
+
+      // Actual profit = expected output - input - actual costs
+      const actualProfit = opportunity.expectedOutput - opportunity.inputAmount - totalCosts
+
+      // Validate result
+      if (!Number.isFinite(actualProfit)) {
+        throw new ValidationError("Invalid profit calculation result")
+      }
+
+      return actualProfit
+    } catch (error) {
+      logger.error("Error calculating actual profit:", error)
+      // Return 0 on error to prevent invalid data
+      return 0
+    }
   }
 
   private async simulateTransaction(delayMs: number): Promise<void> {

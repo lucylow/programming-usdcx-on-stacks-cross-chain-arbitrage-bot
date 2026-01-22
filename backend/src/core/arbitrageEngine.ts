@@ -1,6 +1,8 @@
 import type { PriceOracle, ArbitrageOpportunity } from "./priceOracle"
 import { config } from "../config"
 import { logger } from "../utils/logger"
+import { ExecutionError, ValidationError, NetworkError } from "../utils/errors"
+import { retry } from "../utils/retry"
 
 export interface Trade {
   id: string
@@ -37,15 +39,23 @@ export class ArbitrageEngine {
       return
     }
 
-    logger.info("Starting Arbitrage Engine...")
-    this.isRunning = true
+    try {
+      logger.info("Starting Arbitrage Engine...")
+      this.isRunning = true
 
-    // Start opportunity scanning
-    this.scanInterval = setInterval(() => {
-      this.scanOpportunities()
-    }, 1000) // Scan every second
+      // Start opportunity scanning
+      this.scanInterval = setInterval(() => {
+        this.scanOpportunities().catch((error) => {
+          logger.error("Unhandled error in scanOpportunities:", error)
+        })
+      }, 1000) // Scan every second
 
-    logger.info("Arbitrage Engine started successfully")
+      logger.info("Arbitrage Engine started successfully")
+    } catch (error) {
+      this.isRunning = false
+      logger.error("Failed to start Arbitrage Engine:", error)
+      throw new ExecutionError("Failed to start arbitrage engine", undefined, { originalError: error })
+    }
   }
 
   stop(): void {
@@ -63,39 +73,80 @@ export class ArbitrageEngine {
     try {
       const opportunities = this.priceOracle.detectOpportunities(config.risk.minProfitThreshold)
 
-      // Execute top opportunities
-      for (const opportunity of opportunities.slice(0, config.risk.maxConcurrentTrades)) {
-        if (this.shouldExecute(opportunity)) {
-          await this.executeTrade(opportunity)
-        }
+      // Validate opportunities
+      if (!Array.isArray(opportunities)) {
+        logger.warn("Invalid opportunities data received")
+        return
       }
+
+      // Execute top opportunities with error handling per trade
+      const executionPromises = opportunities
+        .slice(0, config.risk.maxConcurrentTrades)
+        .filter((opp) => this.shouldExecute(opp))
+        .map((opportunity) =>
+          this.executeTrade(opportunity).catch((error) => {
+            logger.error(`Failed to execute trade for opportunity ${opportunity.ethDex}-${opportunity.stacksDex}:`, error)
+            // Don't throw - continue with other trades
+          }),
+        )
+
+      await Promise.allSettled(executionPromises)
     } catch (error) {
       logger.error("Error scanning opportunities:", error)
+      // Don't stop the engine on scan errors
     }
   }
 
   private shouldExecute(opportunity: ArbitrageOpportunity): boolean {
-    // Check if already executing
-    const activeTrades = Array.from(this.trades.values()).filter((t) => t.status === "executing")
+    try {
+      // Validate opportunity
+      if (!opportunity) {
+        logger.warn("Invalid opportunity provided to shouldExecute")
+        return false
+      }
 
-    if (activeTrades.length >= config.risk.maxConcurrentTrades) {
+      // Check if already executing
+      const activeTrades = Array.from(this.trades.values()).filter((t) => t.status === "executing")
+
+      if (activeTrades.length >= config.risk.maxConcurrentTrades) {
+        return false
+      }
+
+      // Validate profit data
+      if (!Number.isFinite(opportunity.estimatedProfit)) {
+        logger.warn("Invalid estimatedProfit in opportunity")
+        return false
+      }
+
+      // Check profitability
+      if (opportunity.estimatedProfit < config.risk.minProfitThreshold * 10000) {
+        return false
+      }
+
+      // Validate confidence
+      if (!Number.isFinite(opportunity.confidence) || opportunity.confidence < 0 || opportunity.confidence > 1) {
+        logger.warn("Invalid confidence score in opportunity")
+        return false
+      }
+
+      // Check confidence
+      if (opportunity.confidence < 0.7) {
+        return false
+      }
+
+      return true
+    } catch (error) {
+      logger.error("Error in shouldExecute:", error)
       return false
     }
-
-    // Check profitability
-    if (opportunity.estimatedProfit < config.risk.minProfitThreshold * 10000) {
-      return false
-    }
-
-    // Check confidence
-    if (opportunity.confidence < 0.7) {
-      return false
-    }
-
-    return true
   }
 
   private async executeTrade(opportunity: ArbitrageOpportunity): Promise<void> {
+    // Validate opportunity
+    if (!opportunity) {
+      throw new ValidationError("Opportunity is required for trade execution")
+    }
+
     const tradeId = this.generateTradeId()
 
     const trade: Trade = {
@@ -110,16 +161,40 @@ export class ArbitrageEngine {
     logger.info(`Executing trade ${tradeId}: ${opportunity.direction}`)
 
     try {
-      // Simulate trade execution in demo mode
+      // Execute with retry logic for network operations
       if (config.mode === "demo") {
-        await this.simulateTradeExecution(trade)
+        await retry(
+          () => this.simulateTradeExecution(trade),
+          {
+            maxRetries: 2,
+            initialDelay: 1000,
+            onRetry: (attempt) => {
+              logger.warn(`Retrying trade execution ${tradeId} (attempt ${attempt})`)
+            },
+          },
+        )
       } else {
-        await this.executeRealTrade(trade)
+        await retry(
+          () => this.executeRealTrade(trade),
+          {
+            maxRetries: 3,
+            initialDelay: 2000,
+            onRetry: (attempt) => {
+              logger.warn(`Retrying real trade execution ${tradeId} (attempt ${attempt})`)
+            },
+          },
+        )
+      }
+
+      // Validate profit calculation
+      const calculatedProfit = opportunity.estimatedProfit * 0.9 // 90% of estimated
+      if (!Number.isFinite(calculatedProfit)) {
+        throw new ValidationError("Invalid profit calculation")
       }
 
       trade.status = "completed"
       trade.endTime = Date.now()
-      trade.profit = opportunity.estimatedProfit * 0.9 // 90% of estimated
+      trade.profit = calculatedProfit
 
       this.metrics.successfulTrades++
       this.metrics.totalProfit += trade.profit
@@ -128,14 +203,19 @@ export class ArbitrageEngine {
     } catch (error: any) {
       trade.status = "failed"
       trade.endTime = Date.now()
-      trade.error = error.message
+      trade.error = error instanceof Error ? error.message : String(error)
 
       this.metrics.failedTrades++
 
       logger.error(`Trade ${tradeId} failed:`, error)
-    }
 
-    this.metrics.totalTrades++
+      // Re-throw critical errors
+      if (error instanceof ValidationError || error instanceof NetworkError) {
+        throw error
+      }
+    } finally {
+      this.metrics.totalTrades++
+    }
   }
 
   private async simulateTradeExecution(trade: Trade): Promise<void> {
@@ -151,14 +231,34 @@ export class ArbitrageEngine {
   }
 
   private async executeRealTrade(trade: Trade): Promise<void> {
-    // Real trade execution would involve:
-    // 1. Approve tokens
-    // 2. Execute swap on source chain
-    // 3. Bridge tokens
-    // 4. Execute swap on destination chain
-    // 5. Bridge back (if needed)
+    try {
+      // Validate trade
+      if (!trade || !trade.opportunity) {
+        throw new ValidationError("Invalid trade data for execution")
+      }
 
-    throw new Error("Real trade execution not implemented")
+      // Real trade execution would involve:
+      // 1. Approve tokens
+      // 2. Execute swap on source chain
+      // 3. Bridge tokens
+      // 4. Execute swap on destination chain
+      // 5. Bridge back (if needed)
+
+      // For now, throw a more descriptive error
+      throw new ExecutionError(
+        "Real trade execution not implemented - use demo mode for testing",
+        undefined,
+        { tradeId: trade.id },
+      )
+    } catch (error) {
+      if (error instanceof ExecutionError || error instanceof ValidationError) {
+        throw error
+      }
+      throw new ExecutionError("Failed to execute real trade", undefined, {
+        tradeId: trade.id,
+        originalError: error,
+      })
+    }
   }
 
   private generateTradeId(): string {

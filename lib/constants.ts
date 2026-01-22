@@ -6,14 +6,15 @@ export const APP_NAME = "ArbitrageBot"
 export const APP_DESCRIPTION = "AI-Powered Cross-Chain Arbitrage Bot"
 
 // API Configuration
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+// Support both VITE_ (Vite) and NEXT_PUBLIC_ (Next.js) prefixes for compatibility
+export const API_BASE_URL = (import.meta.env.VITE_API_URL || import.meta.env.NEXT_PUBLIC_API_URL || "http://localhost:3001")
 
 // Network Configuration
 export const NETWORKS = {
   ethereum: {
     id: 1,
     name: "Ethereum",
-    rpcUrl: process.env.NEXT_PUBLIC_ETH_RPC_URL || "https://eth.llamarpc.com",
+    rpcUrl: (import.meta.env.VITE_ETH_RPC_URL || import.meta.env.NEXT_PUBLIC_ETH_RPC_URL || "https://eth.llamarpc.com"),
     explorerUrl: "https://etherscan.io",
     nativeCurrency: {
       name: "Ether",
@@ -24,7 +25,7 @@ export const NETWORKS = {
   stacks: {
     id: "mainnet",
     name: "Stacks",
-    rpcUrl: process.env.NEXT_PUBLIC_STACKS_RPC_URL || "https://stacks-node-api.mainnet.stacks.co",
+    rpcUrl: (import.meta.env.VITE_STACKS_RPC_URL || import.meta.env.NEXT_PUBLIC_STACKS_RPC_URL || "https://stacks-node-api.mainnet.stacks.co"),
     explorerUrl: "https://explorer.stacks.co",
     nativeCurrency: {
       name: "Stacks",

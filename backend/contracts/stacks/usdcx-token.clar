@@ -77,7 +77,11 @@
   (memo (optional (buff 34)))
 )
   (begin
-    (asserts! (is-eq sender tx-sender) ERR-NOT-AUTHORIZED)
+    ;; Allow tx-sender or contract-caller (e.g. vault withdrawing on behalf of operator)
+    (asserts!
+      (or (is-eq sender tx-sender) (is-eq sender contract-caller))
+      ERR-NOT-AUTHORIZED
+    )
     (try! (check-not-paused))
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
     (try! (ft-transfer? usdcx amount sender recipient))

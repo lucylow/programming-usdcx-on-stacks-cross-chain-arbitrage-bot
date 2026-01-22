@@ -45,7 +45,7 @@ export default function StacksWalletConnect() {
   const fetchBalance = async () => {
     try {
       const contractAddress =
-        process.env.NEXT_PUBLIC_USDCX_CONTRACT_ADDRESS || "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"
+        (import.meta.env.VITE_USDCX_CONTRACT_ADDRESS || import.meta.env.NEXT_PUBLIC_USDCX_CONTRACT_ADDRESS || "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM")
       const balance = await walletService.getUSDCxBalance(contractAddress)
       setBalance(balance)
     } catch (error) {

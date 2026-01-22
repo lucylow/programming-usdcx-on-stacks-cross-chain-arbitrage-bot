@@ -16,7 +16,7 @@ export const config: BotConfig = {
   },
 
   stacks: {
-    nodeUrl: process.env.STACKS_NODE_URL || "https://api.mainnet.hiro.so",
+    rpcUrl: process.env.STACKS_NODE_URL || "https://api.mainnet.hiro.so",
     privateKey: process.env.STACKS_PRIVATE_KEY || "",
     network: (process.env.STACKS_NETWORK as "mainnet" | "testnet") || "mainnet",
     walletAddress: process.env.STACKS_WALLET_ADDRESS || "",

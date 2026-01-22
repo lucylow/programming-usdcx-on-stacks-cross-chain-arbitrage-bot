@@ -10,8 +10,9 @@ import type {
   Transaction,
 } from "./types"
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001/api"
-const STACKS_API = process.env.NEXT_PUBLIC_STACKS_API || "https://api.testnet.hiro.so"
+// Support both VITE_ (Vite) and NEXT_PUBLIC_ (Next.js) prefixes for compatibility
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || import.meta.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001/api")
+const STACKS_API = (import.meta.env.VITE_STACKS_API || import.meta.env.NEXT_PUBLIC_STACKS_API || "https://api.testnet.hiro.so")
 
 class DappApi {
   private backendUrl: string
@@ -22,40 +23,151 @@ class DappApi {
     this.backendUrl = BACKEND_URL
     this.stacksApi = STACKS_API
     // Use mock data if backend is not available
-    this.useMockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true"
+    this.useMockData = (import.meta.env.VITE_USE_MOCK_DATA || import.meta.env.NEXT_PUBLIC_USE_MOCK_DATA) === "true"
   }
 
-  private async fetchBackend<T>(endpoint: string, options?: RequestInit): Promise<T> {
-    try {
-      const response = await fetch(`${this.backendUrl}${endpoint}`, {
-        ...options,
-        headers: {
-          "Content-Type": "application/json",
-          ...options?.headers,
-        },
-      })
+  private async fetchBackend<T>(endpoint: string, options?: RequestInit, retries = 3): Promise<T> {
+    let lastError: Error | null = null
 
-      if (!response.ok) {
-        throw new Error(`Backend error: ${response.statusText}`)
-      }
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
 
-      return response.json()
-    } catch (error) {
-      console.error(`Backend request failed: ${endpoint}`, error)
-      // Fall back to mock data if backend fails
-      if (this.useMockData) {
-        return this.getMockData<T>(endpoint)
+        const response = await fetch(`${this.backendUrl}${endpoint}`, {
+          ...options,
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            ...options?.headers,
+          },
+        })
+
+        clearTimeout(timeoutId)
+
+        if (!response.ok) {
+          // Try to parse error message from response
+          let errorMessage = `Backend error: ${response.statusText}`
+          try {
+            const errorData = await response.json()
+            errorMessage = errorData.message || errorData.error || errorMessage
+          } catch {
+            // Ignore JSON parse errors
+          }
+
+          // Don't retry on client errors (4xx)
+          if (response.status >= 400 && response.status < 500) {
+            // Fall back to mock data if enabled
+            if (this.useMockData) {
+              console.warn(`Backend error, using mock data: ${errorMessage}`)
+              return this.getMockData<T>(endpoint)
+            }
+            throw new Error(errorMessage)
+          }
+
+          // Retry on server errors (5xx)
+          throw new Error(errorMessage)
+        }
+
+        return response.json()
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+
+        // Don't retry on abort (timeout) or client errors
+        if (error instanceof Error) {
+          if (error.name === "AbortError") {
+            // Fall back to mock data if enabled
+            if (this.useMockData) {
+              console.warn("Request timeout, using mock data")
+              return this.getMockData<T>(endpoint)
+            }
+            throw new Error("Request timeout")
+          }
+          if (error.message.includes("Backend error:") && !error.message.includes("500")) {
+            // Fall back to mock data if enabled
+            if (this.useMockData) {
+              console.warn(`Backend error, using mock data: ${error.message}`)
+              return this.getMockData<T>(endpoint)
+            }
+            throw error
+          }
+        }
+
+        // Wait before retrying (exponential backoff)
+        if (attempt < retries) {
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000)
+          await new Promise((resolve) => setTimeout(resolve, delay))
+          console.warn(`Backend request failed, retrying (${attempt}/${retries}): ${endpoint}`)
+        }
       }
-      throw error
     }
+
+    // All retries exhausted - fall back to mock data if enabled
+    if (this.useMockData) {
+      console.warn(`Backend request failed after ${retries} attempts, using mock data: ${endpoint}`)
+      return this.getMockData<T>(endpoint)
+    }
+
+    console.error(`Backend request failed after ${retries} attempts: ${endpoint}`, lastError)
+    throw lastError || new Error("Unknown error")
   }
 
-  private async fetchStacks<T>(endpoint: string): Promise<T> {
-    const response = await fetch(`${this.stacksApi}${endpoint}`)
-    if (!response.ok) {
-      throw new Error(`Stacks API error: ${response.statusText}`)
+  private async fetchStacks<T>(endpoint: string, retries = 3): Promise<T> {
+    let lastError: Error | null = null
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+
+        const response = await fetch(`${this.stacksApi}${endpoint}`, {
+          signal: controller.signal,
+        })
+
+        clearTimeout(timeoutId)
+
+        if (!response.ok) {
+          let errorMessage = `Stacks API error: ${response.statusText}`
+          try {
+            const errorData = await response.json()
+            errorMessage = errorData.message || errorData.error || errorMessage
+          } catch {
+            // Ignore JSON parse errors
+          }
+
+          // Don't retry on client errors (4xx)
+          if (response.status >= 400 && response.status < 500) {
+            throw new Error(errorMessage)
+          }
+
+          throw new Error(errorMessage)
+        }
+
+        return response.json()
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+
+        // Don't retry on abort (timeout) or client errors
+        if (error instanceof Error) {
+          if (error.name === "AbortError") {
+            throw new Error("Stacks API request timeout")
+          }
+          if (error.message.includes("Stacks API error:") && !error.message.includes("500")) {
+            throw error
+          }
+        }
+
+        // Wait before retrying (exponential backoff)
+        if (attempt < retries) {
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000)
+          await new Promise((resolve) => setTimeout(resolve, delay))
+          console.warn(`Stacks API request failed, retrying (${attempt}/${retries}): ${endpoint}`)
+        }
+      }
     }
-    return response.json()
+
+    console.error(`Stacks API request failed after ${retries} attempts: ${endpoint}`, lastError)
+    throw lastError || new Error("Unknown error")
   }
 
   // Generate mock data for demo mode
