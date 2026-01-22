@@ -19,3 +19,4 @@ name = "arbitrage-vault"
 path = "stacks/arbitrage-vault.clar"
 depends_on = ["usdcx-token"]
 
+

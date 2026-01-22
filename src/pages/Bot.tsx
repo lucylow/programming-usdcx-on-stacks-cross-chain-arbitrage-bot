@@ -5,3 +5,4 @@ export default function Bot() {
   return <Navigate to="/bot/dashboard" replace />
 }
 
+
