@@ -200,7 +200,7 @@ export class ArbitrageEngine {
       this.metrics.totalProfit += trade.profit
 
       logger.info(`Trade ${tradeId} completed successfully. Profit: $${trade.profit.toFixed(2)}`)
-    } catch (error: any) {
+    } catch (error: unknown) {
       trade.status = "failed"
       trade.endTime = Date.now()
       trade.error = error instanceof Error ? error.message : String(error)

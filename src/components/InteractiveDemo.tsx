@@ -3,9 +3,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Bot, Play, Pause, RotateCcw, Zap, CheckCircle, AlertCircle, 
   Clock, Layers, Info, Search, Calculator, Shield, ArrowLeftRight, 
-  Cable, AlertTriangle
+  Cable, AlertTriangle, ExternalLink, Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 interface LogEntry {
   time: string;
@@ -309,10 +310,20 @@ export function InteractiveDemo() {
           viewport={{ once: true }}
           className="text-center mb-12"
         >
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">Live Interactive Demo</h2>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <Sparkles className="w-6 h-6 text-primary" />
+            <h2 className="text-3xl md:text-4xl font-bold">Live Interactive Demo</h2>
+          </div>
+          <p className="text-muted-foreground text-lg max-w-2xl mx-auto mb-4">
             Experience how our bot detects and executes arbitrage opportunities in real-time.
           </p>
+          <Link to="/demo">
+            <Button variant="outline" className="mt-4">
+              <Sparkles className="w-4 h-4 mr-2" />
+              Explore Full Demo Center
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </Button>
+          </Link>
         </motion.div>
 
         <motion.div

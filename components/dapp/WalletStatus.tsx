@@ -3,6 +3,7 @@
 import { Wallet, Copy, ExternalLink, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useDapp } from "@/lib/dapp/DappProvider"
 import { useStacks } from "@/lib/stacks/StacksProvider"
 import { toast } from "sonner"
@@ -87,23 +88,31 @@ export function WalletStatus() {
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-black/20 rounded-lg p-4">
           <div className="text-xs text-muted-foreground mb-1">STX Balance</div>
-          <div className="text-xl font-bold text-white">
-            {wallet.stxBalance.toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 6,
-            })}{" "}
-            <span className="text-sm text-muted-foreground">STX</span>
-          </div>
+          {isLoading ? (
+            <Skeleton className="h-7 w-24" />
+          ) : (
+            <div className="text-xl font-bold text-white">
+              {wallet.stxBalance.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 6,
+              })}{" "}
+              <span className="text-sm text-muted-foreground">STX</span>
+            </div>
+          )}
         </div>
         <div className="bg-black/20 rounded-lg p-4">
           <div className="text-xs text-muted-foreground mb-1">USDCx Balance</div>
-          <div className="text-xl font-bold text-accent">
-            {wallet.usdcxBalance.toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}{" "}
-            <span className="text-sm text-muted-foreground">USDCx</span>
-          </div>
+          {isLoading ? (
+            <Skeleton className="h-7 w-24" />
+          ) : (
+            <div className="text-xl font-bold text-accent">
+              {wallet.usdcxBalance.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{" "}
+              <span className="text-sm text-muted-foreground">USDCx</span>
+            </div>
+          )}
         </div>
       </div>
     </Card>

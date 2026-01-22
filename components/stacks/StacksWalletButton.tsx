@@ -13,13 +13,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useStacks } from "@/lib/stacks/StacksProvider"
+import { useStacksNetwork } from "@/lib/stacks/hooks"
+import { NetworkSwitcher } from "./NetworkSwitcher"
 import { toast } from "sonner"
 
 export function StacksWalletButton() {
   const { doOpenAuth } = useConnect()
-  const { isSignedIn, walletInfo, network, disconnect, refreshBalances, isLoading } = useStacks()
+  const { isSignedIn, walletInfo, network, disconnect, refreshBalances, isLoading, isRefreshing } = useStacks()
+  const { networkInfo } = useStacksNetwork()
   const [copied, setCopied] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
 
   const handleConnect = () => {
     doOpenAuth()
@@ -31,9 +33,7 @@ export function StacksWalletButton() {
   }
 
   const handleRefresh = async () => {
-    setIsRefreshing(true)
     await refreshBalances()
-    setIsRefreshing(false)
     toast.success("Balances refreshed")
   }
 
@@ -122,6 +122,12 @@ export function StacksWalletButton() {
           <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
           Refresh Balances
         </DropdownMenuItem>
+
+        <DropdownMenuSeparator className="bg-white/10" />
+
+        <div className="px-3 py-2">
+          <NetworkSwitcher />
+        </div>
 
         <DropdownMenuSeparator className="bg-white/10" />
 

@@ -95,6 +95,12 @@ const navigationItems: NavItem[] = [
     icon: BookOpen,
     children: [
       {
+        label: "Interactive Demo",
+        href: "/demo",
+        icon: Zap,
+        description: "Try our interactive features",
+      },
+      {
         label: "Documentation",
         href: "/docs",
         icon: BookOpen,

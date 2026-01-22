@@ -59,6 +59,12 @@ export interface TransactionStatus {
   error?: string
 }
 
+export interface FeeEstimate {
+  estimatedMicroStx: number
+  estimatedFeeRate: number
+  estimatedTotalFee: number
+}
+
 export class StacksContractService {
   private network: StacksMainnet | StacksTestnet
   private networkType: NetworkType
@@ -92,7 +98,8 @@ export class StacksContractService {
       )
 
       if (!response.ok) {
-        throw new Error(`Read-only call failed: ${response.statusText}`)
+        const errorText = await response.text()
+        throw new Error(`Read-only call failed: ${response.statusText} - ${errorText}`)
       }
 
       const data = await response.json()
@@ -107,6 +114,45 @@ export class StacksContractService {
     } catch (error: any) {
       console.error("Read-only call failed:", error)
       throw new Error(`Stacks read-only call failed: ${error.message}`)
+    }
+  }
+
+  /**
+   * Estimate transaction fee
+   */
+  async estimateFee(
+    contractAddress: string,
+    contractName: string,
+    functionName: string,
+    functionArgs: ClarityValue[],
+  ): Promise<FeeEstimate> {
+    try {
+      // Get fee rate from network
+      const feeRateResponse = await fetch(`${this.network.coreApiUrl}/v2/fees/transfer`)
+      if (!feeRateResponse.ok) {
+        throw new Error("Failed to fetch fee rate")
+      }
+      const feeRateData = await feeRateResponse.json()
+      const feeRate = Number.parseInt(feeRateData.fee_rate || "1000", 10)
+
+      // Estimate transaction size (rough estimate)
+      const estimatedSize = 200 + functionArgs.length * 50 // Base size + args
+      const estimatedMicroStx = estimatedSize * feeRate
+      const estimatedTotalFee = estimatedMicroStx / 1_000_000
+
+      return {
+        estimatedMicroStx,
+        estimatedFeeRate: feeRate,
+        estimatedTotalFee,
+      }
+    } catch (error) {
+      console.error("Fee estimation failed:", error)
+      // Return default estimate
+      return {
+        estimatedMicroStx: 1000,
+        estimatedFeeRate: 1000,
+        estimatedTotalFee: 0.001,
+      }
     }
   }
 
@@ -485,6 +531,77 @@ export class StacksContractService {
       contractName: "usdcx-token",
       functionName: "get-balance",
       functionArgs: [principalCV(address)],
+      senderAddress,
+    })
+  }
+
+  async getUSDCxAllowance(senderAddress: string, owner: string, spender: string) {
+    return await this.readOnlyCall<{ value: string }>({
+      contractAddress: this.addresses.usdcxToken.split(".")[0],
+      contractName: "usdcx-token",
+      functionName: "get-allowance",
+      functionArgs: [principalCV(owner), principalCV(spender)],
+      senderAddress,
+    })
+  }
+
+  async getUSDCxTotalSupply(senderAddress: string) {
+    return await this.readOnlyCall<{ value: string }>({
+      contractAddress: this.addresses.usdcxToken.split(".")[0],
+      contractName: "usdcx-token",
+      functionName: "get-total-supply",
+      functionArgs: [],
+      senderAddress,
+    })
+  }
+
+  async getUSDCxMaxSupply(senderAddress: string) {
+    return await this.readOnlyCall<{ value: { value?: string } }>({
+      contractAddress: this.addresses.usdcxToken.split(".")[0],
+      contractName: "usdcx-token",
+      functionName: "get-max-supply",
+      functionArgs: [],
+      senderAddress,
+    })
+  }
+
+  // ================ USDCX BRIDGE ================
+  async getWithdrawalRequest(senderAddress: string, requestId: number) {
+    return await this.readOnlyCall({
+      contractAddress: this.addresses.usdcxBridge.split(".")[0],
+      contractName: "usdcx-bridge",
+      functionName: "get-withdrawal-request",
+      functionArgs: [uintCV(requestId)],
+      senderAddress,
+    })
+  }
+
+  async getWithdrawalStatus(senderAddress: string, requestId: number) {
+    return await this.readOnlyCall({
+      contractAddress: this.addresses.usdcxBridge.split(".")[0],
+      contractName: "usdcx-bridge",
+      functionName: "get-withdrawal-status",
+      functionArgs: [uintCV(requestId)],
+      senderAddress,
+    })
+  }
+
+  async isWithdrawalPending(senderAddress: string, requestId: number) {
+    return await this.readOnlyCall<{ value: boolean }>({
+      contractAddress: this.addresses.usdcxBridge.split(".")[0],
+      contractName: "usdcx-bridge",
+      functionName: "is-withdrawal-pending",
+      functionArgs: [uintCV(requestId)],
+      senderAddress,
+    })
+  }
+
+  async getWithdrawalCount(senderAddress: string) {
+    return await this.readOnlyCall<{ value: string }>({
+      contractAddress: this.addresses.usdcxBridge.split(".")[0],
+      contractName: "usdcx-bridge",
+      functionName: "get-withdrawal-count",
+      functionArgs: [],
       senderAddress,
     })
   }

@@ -4,29 +4,26 @@ import {
   AnchorMode,
   PostConditionMode,
   uintCV,
-  intCV,
   principalCV,
   stringAsciiCV,
   stringUtf8CV,
-  bufferCV,
-  listCV,
   noneCV,
-  cvToValue,
+  someCV,
+  listCV,
+  tupleCV,
   ClarityValue,
   TransactionVersion,
   getAddressFromPrivateKey,
   createStacksPrivateKey,
   privateKeyToString,
-  StacksTransaction,
-  TxBroadcastResult,
   TxBroadcastResultOk,
-  TxBroadcastResultRejected,
   cvToJSON,
   hexToCV,
 } from "@stacks/transactions"
 import { StacksMainnet, StacksTestnet, StacksNetwork } from "@stacks/network"
 import { logger } from "../utils/logger"
 import { retry } from "../utils/retry"
+import { BlockchainError, getErrorMessage } from "../utils/errors"
 import type { NetworkConfig } from "../config/types"
 
 export interface StacksTransactionOptions {
@@ -39,7 +36,7 @@ export interface StacksTransactionOptions {
   nonce?: number
   anchorMode?: AnchorMode
   postConditionMode?: PostConditionMode
-  postConditions?: any[]
+  postConditions?: unknown[]
   network?: StacksNetwork
 }
 
@@ -55,7 +52,7 @@ export interface StacksReadOnlyCallOptions {
 export interface TransactionStatus {
   txId: string
   status: "pending" | "success" | "failed" | "abort_by_response" | "abort_by_post_condition"
-  txResult?: any
+  txResult?: unknown
   blockHeight?: number
   blockHash?: string
   error?: string
@@ -89,7 +86,11 @@ export class StacksClient {
       logger.info(`Stacks client initialized for ${this.networkType} at address: ${this.address}`)
     } catch (error) {
       logger.error("Failed to initialize Stacks client:", error)
-      throw new Error(`Invalid Stacks private key: ${error}`)
+      throw new BlockchainError(
+        `Invalid Stacks private key: ${getErrorMessage(error)}`,
+        "stacks",
+        { cause: error },
+      )
     }
   }
 
@@ -146,7 +147,7 @@ export class StacksClient {
         estimatedMicroStx: estimatedFee,
         estimatedFeeRate: 1, // Default fee rate
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Gas estimation failed:", error)
       // Return conservative estimate
       return {
@@ -176,7 +177,7 @@ export class StacksClient {
         network: options.network || this.network,
         anchorMode: options.anchorMode || AnchorMode.Any,
         postConditionMode: options.postConditionMode || PostConditionMode.Deny,
-        postConditions: options.postConditions || [],
+        postConditions: (options.postConditions ?? []) as Parameters<typeof makeContractCall>[0]["postConditions"],
         fee: options.fee,
       })
 
@@ -201,16 +202,16 @@ export class StacksClient {
       logger.info(`Transaction broadcasted: ${txId}`)
 
       return txId
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Contract call failed:", error)
-      throw new Error(`Stacks contract call failed: ${error.message}`)
+      throw new Error(`Stacks contract call failed: ${getErrorMessage(error)}`)
     }
   }
 
   /**
    * Make a read-only contract call
    */
-  async readOnlyCall<T = any>(options: StacksReadOnlyCallOptions): Promise<T> {
+  async readOnlyCall<T = unknown>(options: StacksReadOnlyCallOptions): Promise<T> {
     try {
       // Convert Clarity values to hex for API call
       // The Stacks API expects hex-encoded Clarity values
@@ -263,9 +264,14 @@ export class StacksClient {
       }
 
       throw new Error(`Read-only call returned error: ${data.error || "Unknown error"}`)
-    } catch (error: any) {
+    } catch (error) {
       logger.error("Read-only call failed:", error)
-      throw new Error(`Stacks read-only call failed: ${error.message}`)
+      if (error instanceof BlockchainError) throw error
+      throw new BlockchainError(
+        `Stacks read-only call failed: ${getErrorMessage(error)}`,
+        "stacks",
+        { contract: `${options.contractName}.${options.functionName}`, cause: error },
+      )
     }
   }
 
@@ -325,12 +331,12 @@ export class StacksClient {
       }
 
       return status
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Failed to get transaction status for ${txId}:`, error)
       return {
         txId,
         status: "pending",
-        error: error.message,
+        error: getErrorMessage(error),
       }
     }
   }
@@ -385,6 +391,134 @@ export class StacksClient {
       logger.error("Failed to get USDCx balance:", error)
       return 0
     }
+  }
+
+  /**
+   * Get USDCx allowance for a spender
+   */
+  async getUSDCxAllowance(
+    contractAddress: string,
+    owner: string,
+    spender: string,
+    contractName = "usdcx-token",
+  ): Promise<number> {
+    try {
+      const allowance = await this.readOnlyCall<{ value: string }>({
+        contractAddress,
+        contractName,
+        functionName: "get-allowance",
+        functionArgs: [principalCV(owner), principalCV(spender)],
+        senderAddress: owner,
+      })
+
+      const allowanceValue = Number.parseInt(allowance.value, 16)
+      return allowanceValue / 1e6
+    } catch (error) {
+      logger.error("Failed to get USDCx allowance:", error)
+      return 0
+    }
+  }
+
+  /**
+   * Approve USDCx spending
+   */
+  async approveUSDCx(
+    contractAddress: string,
+    spender: string,
+    amount: number,
+    contractName = "usdcx-token",
+  ): Promise<string> {
+    const amountMicro = Math.floor(amount * 1e6)
+
+    return await this.contractCall({
+      contractAddress,
+      contractName,
+      functionName: "approve",
+      functionArgs: [principalCV(spender), uintCV(amountMicro)],
+      senderKey: this.privateKey,
+    })
+  }
+
+  /**
+   * Transfer USDCx from another address (requires allowance)
+   */
+  async transferUSDCxFrom(
+    contractAddress: string,
+    sender: string,
+    recipient: string,
+    amount: number,
+    contractName = "usdcx-token",
+    memo?: string,
+  ): Promise<string> {
+    const amountMicro = Math.floor(amount * 1e6)
+
+    const functionArgs = [
+      uintCV(amountMicro),
+      principalCV(sender),
+      principalCV(recipient),
+      memo ? someCV(stringUtf8CV(memo)) : noneCV(),
+    ]
+
+    return await this.contractCall({
+      contractAddress,
+      contractName,
+      functionName: "transfer-from",
+      functionArgs,
+      senderKey: this.privateKey,
+    })
+  }
+
+  /**
+   * Batch transfer USDCx to multiple recipients
+   */
+  async batchTransferUSDCx(
+    contractAddress: string,
+    recipients: Array<{ recipient: string; amount: number }>,
+    contractName = "usdcx-token",
+  ): Promise<string> {
+    const recipientList = recipients.map((r) =>
+      tupleCV({
+        recipient: principalCV(r.recipient),
+        amount: uintCV(Math.floor(r.amount * 1e6)),
+      }),
+    )
+
+    return await this.contractCall({
+      contractAddress,
+      contractName,
+      functionName: "batch-transfer",
+      functionArgs: [listCV(recipientList)],
+      senderKey: this.privateKey,
+    })
+  }
+
+  /**
+   * Get multiple USDCx balances at once
+   */
+  async getBatchUSDCxBalances(
+    contractAddress: string,
+    addresses: string[],
+    contractName = "usdcx-token",
+  ): Promise<Map<string, number>> {
+    const balances = new Map<string, number>()
+
+    // Fetch balances in parallel
+    const balancePromises = addresses.map(async (address) => {
+      try {
+        const balance = await this.getUSDCxBalance(contractAddress, contractName, address)
+        return { address, balance }
+      } catch (error) {
+        logger.error(`Failed to get balance for ${address}:`, error)
+        return { address, balance: 0 }
+      }
+    })
+
+    const results = await Promise.all(balancePromises)
+    results.forEach(({ address, balance }) => {
+      balances.set(address, balance)
+    })
+
+    return balances
   }
 
   /**
@@ -504,9 +638,3 @@ export class StacksClient {
     return this.privateKey
   }
 }
-
-// Helper function to create some CV (optional value)
-function someCV(value: ClarityValue): ClarityValue {
-  return { type: 10, value } as any
-}
-

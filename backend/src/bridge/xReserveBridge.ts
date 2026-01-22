@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, AxiosError } from "axios"
 import { logger } from "../utils/logger"
-import { BridgeError, NetworkError, TimeoutError, ValidationError } from "../utils/errors"
+import { BridgeError, NetworkError, TimeoutError, ValidationError, getErrorMessage } from "../utils/errors"
 import { retry } from "../utils/retry"
 
 export interface BridgeOperation {
@@ -131,8 +131,9 @@ export class XReserveBridge {
       logger.info(`Deposit initiated: ${operation.id}`)
 
       return operation
-    } catch (error: any) {
-      logger.error("Deposit initiation failed:", error.response?.data || error.message)
+    } catch (error: unknown) {
+      const errorMsg = axios.isAxiosError(error) && error.response?.data ? error.response.data : getErrorMessage(error)
+      logger.error("Deposit initiation failed:", errorMsg)
 
       // Handle specific error types
       if (error instanceof ValidationError || error instanceof BridgeError) {
@@ -153,7 +154,7 @@ export class XReserveBridge {
         }
       }
 
-      throw new BridgeError(`Failed to initiate deposit: ${error.message}`, { originalError: error })
+      throw new BridgeError(`Failed to initiate deposit: ${getErrorMessage(error)}`, { originalError: error })
     }
   }
 
@@ -223,8 +224,9 @@ export class XReserveBridge {
       logger.info(`Withdrawal initiated: ${operation.id}`)
 
       return operation
-    } catch (error: any) {
-      logger.error("Withdrawal initiation failed:", error.response?.data || error.message)
+    } catch (error: unknown) {
+      const errorMsg = axios.isAxiosError(error) && error.response?.data ? error.response.data : getErrorMessage(error)
+      logger.error("Withdrawal initiation failed:", errorMsg)
 
       // Handle specific error types
       if (error instanceof ValidationError || error instanceof BridgeError) {
@@ -245,7 +247,7 @@ export class XReserveBridge {
         }
       }
 
-      throw new BridgeError(`Failed to initiate withdrawal: ${error.message}`, { originalError: error })
+      throw new BridgeError(`Failed to initiate withdrawal: ${getErrorMessage(error)}`, { originalError: error })
     }
   }
 
@@ -301,8 +303,8 @@ export class XReserveBridge {
 
       this.operations.set(operationId, operation)
       return operation
-    } catch (error: any) {
-      logger.error(`Failed to get status for operation ${operationId}:`, error.message)
+    } catch (error: unknown) {
+      logger.error(`Failed to get status for operation ${operationId}:`, getErrorMessage(error))
 
       // Return cached operation if available (graceful degradation)
       const cached = this.operations.get(operationId)
@@ -325,7 +327,7 @@ export class XReserveBridge {
         }
       }
 
-      throw new BridgeError(`Failed to get operation status: ${error.message}`, {
+      throw new BridgeError(`Failed to get operation status: ${getErrorMessage(error)}`, {
         operationId,
         originalError: error,
       })

@@ -91,7 +91,7 @@ export class AlexDex extends StacksDex {
         route: data.route || [params.tokenIn, params.tokenOut],
         fee: this.config.fee,
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("ALEX quote failed:", error)
       // Fallback: estimate based on simple calculation
       return {
@@ -166,7 +166,7 @@ export class ArkadikoDex extends StacksDex {
         route: [params.tokenIn, params.tokenOut],
         fee: this.config.fee,
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Arkadiko quote failed:", error)
       // Fallback estimate
       return {

@@ -19,6 +19,9 @@ import { Card } from "@/components/ui/card"
 import Navigation from "@/components/layout/Navigation"
 import CommandPalette from "@/components/CommandPalette"
 import OpportunityAlert from "@/components/advanced/OpportunityAlert"
+import { ThemeToggle } from "@/components/ui/theme-toggle"
+import { PriceChart } from "@/components/dapp/PriceChart"
+import { ErrorBoundary } from "@/components/ui/error-boundary"
 import { StacksWalletButton } from "@/components/stacks/StacksWalletButton"
 import { MintBadgeButton } from "@/components/nft/MintBadgeButton"
 import { NftGallery } from "@/components/nft/NftGallery"
@@ -44,10 +47,14 @@ export default function LandingPage() {
   }, [prices])
 
   return (
-    <div className="min-h-screen bg-darker text-white">
-      <Navigation />
-      <CommandPalette />
-      <OpportunityAlert />
+    <ErrorBoundary>
+      <div className="min-h-screen bg-darker text-white">
+        <Navigation />
+        <div className="fixed top-4 right-4 z-50">
+          <ThemeToggle />
+        </div>
+        <CommandPalette />
+        <OpportunityAlert />
 
       {/* Hero Section */}
       <section className="pt-32 pb-20 px-4 relative overflow-hidden">
@@ -191,6 +198,9 @@ export default function LandingPage() {
 
             {/* Bot Control Panel */}
             <BotControlPanel />
+
+            {/* Price Chart */}
+            <PriceChart />
 
             {/* Two column layout for opportunities and trades */}
             <div className="grid lg:grid-cols-2 gap-6">
@@ -420,6 +430,7 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
-    </div>
+      </div>
+    </ErrorBoundary>
   )
 }

@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Play, Pause, RefreshCw, Activity, Zap, TrendingUp, DollarSign } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useDapp } from "@/lib/dapp/DappProvider"
 import { toast } from "sonner"
 
@@ -86,7 +87,11 @@ export function BotControlPanel() {
             <Activity className="w-4 h-4" />
             <span className="text-xs">Active Trades</span>
           </div>
-          <div className="text-2xl font-bold text-white">{botStatus?.activeTrades || 0}</div>
+          {isLoading ? (
+            <Skeleton className="h-8 w-16" />
+          ) : (
+            <div className="text-2xl font-bold text-white">{botStatus?.activeTrades || 0}</div>
+          )}
         </div>
 
         <div className="bg-black/20 rounded-lg p-4">
@@ -94,7 +99,11 @@ export function BotControlPanel() {
             <Zap className="w-4 h-4" />
             <span className="text-xs">Opportunities</span>
           </div>
-          <div className="text-2xl font-bold text-white">{botStatus?.opportunitiesDetected || 0}</div>
+          {isLoading ? (
+            <Skeleton className="h-8 w-16" />
+          ) : (
+            <div className="text-2xl font-bold text-white">{botStatus?.opportunitiesDetected || 0}</div>
+          )}
         </div>
 
         <div className="bg-black/20 rounded-lg p-4">
@@ -102,7 +111,11 @@ export function BotControlPanel() {
             <TrendingUp className="w-4 h-4" />
             <span className="text-xs">Win Rate</span>
           </div>
-          <div className="text-2xl font-bold text-accent">{((botStatus?.winRate || 0) * 100).toFixed(1)}%</div>
+          {isLoading ? (
+            <Skeleton className="h-8 w-16" />
+          ) : (
+            <div className="text-2xl font-bold text-accent">{((botStatus?.winRate || 0) * 100).toFixed(1)}%</div>
+          )}
         </div>
 
         <div className="bg-black/20 rounded-lg p-4">
@@ -110,13 +123,17 @@ export function BotControlPanel() {
             <DollarSign className="w-4 h-4" />
             <span className="text-xs">Total Profit</span>
           </div>
-          <div className="text-2xl font-bold text-accent">
-            $
-            {(botStatus?.totalProfit || 0).toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}
-          </div>
+          {isLoading ? (
+            <Skeleton className="h-8 w-20" />
+          ) : (
+            <div className="text-2xl font-bold text-accent">
+              $
+              {(botStatus?.totalProfit || 0).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </div>
+          )}
         </div>
       </div>
 

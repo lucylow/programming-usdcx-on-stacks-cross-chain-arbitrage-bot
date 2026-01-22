@@ -13,6 +13,9 @@ import {
   hexToCV,
   TxBroadcastResultOk,
   TxBroadcastResultRejected,
+  listCV,
+  tupleCV,
+  stringUtf8CV,
 } from "@stacks/transactions"
 
 const appConfig = new AppConfig(["store_write", "publish_data"])
@@ -33,6 +36,22 @@ export interface TransactionStatus {
   error?: string
 }
 
+export interface FeeEstimate {
+  estimatedMicroStx: number
+  estimatedFeeRate: number
+  estimatedTotalFee: number
+}
+
+export interface TransactionHistory {
+  txId: string
+  type: string
+  status: TransactionStatus["status"]
+  timestamp: number
+  blockHeight?: number
+  fee?: number
+  value?: number
+}
+
 interface RetryOptions {
   maxRetries?: number
   delayMs?: number
@@ -42,10 +61,97 @@ interface RetryOptions {
 export class StacksWalletService {
   private network: StacksMainnet | StacksTestnet
   private networkType: "mainnet" | "testnet"
+  private transactionHistory: TransactionHistory[] = []
 
   constructor(networkType: "mainnet" | "testnet" = "testnet") {
     this.networkType = networkType
     this.network = networkType === "mainnet" ? new StacksMainnet() : new StacksTestnet()
+    this.loadTransactionHistory()
+  }
+
+  /**
+   * Load transaction history from localStorage
+   */
+  private loadTransactionHistory(): void {
+    if (typeof window === "undefined") return
+    try {
+      const stored = localStorage.getItem(`stacks-tx-history-${this.networkType}`)
+      if (stored) {
+        this.transactionHistory = JSON.parse(stored)
+      }
+    } catch (error) {
+      console.error("Failed to load transaction history:", error)
+    }
+  }
+
+  /**
+   * Save transaction history to localStorage
+   */
+  private saveTransactionHistory(): void {
+    if (typeof window === "undefined") return
+    try {
+      localStorage.setItem(
+        `stacks-tx-history-${this.networkType}`,
+        JSON.stringify(this.transactionHistory.slice(0, 100)), // Keep last 100
+      )
+    } catch (error) {
+      console.error("Failed to save transaction history:", error)
+    }
+  }
+
+  /**
+   * Add transaction to history
+   */
+  addToHistory(tx: Omit<TransactionHistory, "timestamp">): void {
+    this.transactionHistory.unshift({
+      ...tx,
+      timestamp: Date.now(),
+    })
+    this.transactionHistory = this.transactionHistory.slice(0, 100)
+    this.saveTransactionHistory()
+  }
+
+  /**
+   * Get transaction history
+   */
+  getTransactionHistory(limit = 50): TransactionHistory[] {
+    return this.transactionHistory.slice(0, limit)
+  }
+
+  /**
+   * Estimate transaction fee
+   */
+  async estimateFee(
+    contractAddress: string,
+    contractName: string,
+    functionName: string,
+    functionArgs: any[],
+  ): Promise<FeeEstimate> {
+    try {
+      // Get fee rate from network
+      const feeRateResponse = await fetch(`${this.network.coreApiUrl}/v2/fees/transfer`)
+      const feeRateData = await feeRateResponse.json()
+      const feeRate = Number.parseInt(feeRateData.fee_rate || "1000", 10)
+
+      // Estimate transaction size (rough estimate)
+      const estimatedSize = 200 + functionArgs.length * 50 // Base size + args
+      const estimatedMicroStx = estimatedSize * feeRate
+      const estimatedTotalFee = estimatedMicroStx / 1_000_000
+
+      return {
+        estimatedMicroStx,
+        estimatedFeeRate: feeRate,
+        estimatedTotalFee,
+      }
+    } catch (error) {
+      console.error("Fee estimation failed:", error)
+      // Return default estimate
+      return {
+        estimatedMicroStx: 1000,
+        estimatedFeeRate: 1000,
+        estimatedTotalFee: 0.001,
+      }
+    }
   }
 
   /**
@@ -330,6 +436,261 @@ export class StacksWalletService {
    */
   getNetworkType(): "mainnet" | "testnet" {
     return this.networkType
+  }
+
+  /**
+   * Switch network
+   */
+  switchNetwork(networkType: "mainnet" | "testnet"): void {
+    this.networkType = networkType
+    this.network = networkType === "mainnet" ? new StacksMainnet() : new StacksTestnet()
+  }
+
+  /**
+   * Get STX balance
+   */
+  async getSTXBalance(address?: string): Promise<number> {
+    const targetAddress = address || this.getAddress()
+    if (!targetAddress) return 0
+
+    try {
+      const response = await fetch(`${this.network.coreApiUrl}/extended/v1/address/${targetAddress}/stx`)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch STX balance: ${response.statusText}`)
+      }
+      const data = await response.json()
+      return Number.parseInt(data.balance || "0", 10) / 1_000_000
+    } catch (error) {
+      console.error("Error fetching STX balance:", error)
+      return 0
+    }
+  }
+
+  /**
+   * Get account nonce
+   */
+  async getNonce(address?: string): Promise<number> {
+    const targetAddress = address || this.getAddress()
+    if (!targetAddress) return 0
+
+    try {
+      const response = await fetch(`${this.network.coreApiUrl}/v2/accounts/${targetAddress}?proof=0`)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch nonce: ${response.statusText}`)
+      }
+      const data = await response.json()
+      return Number.parseInt(data.nonce || "0", 10)
+    } catch (error) {
+      console.error("Error fetching nonce:", error)
+      return 0
+    }
+  }
+
+  /**
+   * Get recent transactions for an address
+   */
+  async getRecentTransactions(address?: string, limit = 20): Promise<any[]> {
+    const targetAddress = address || this.getAddress()
+    if (!targetAddress) return []
+
+    try {
+      const response = await fetch(
+        `${this.network.coreApiUrl}/extended/v1/address/${targetAddress}/transactions?limit=${limit}`,
+      )
+      if (!response.ok) {
+        throw new Error(`Failed to fetch transactions: ${response.statusText}`)
+      }
+      const data = await response.json()
+      return data.results || []
+    } catch (error) {
+      console.error("Error fetching transactions:", error)
+      return []
+    }
+  }
+
+  /**
+   * Get USDCx allowance for a spender
+   */
+  async getUSDCxAllowance(
+    contractAddress: string,
+    owner: string,
+    spender: string,
+    contractName = "usdcx-token",
+  ): Promise<number> {
+    const address = this.getAddress()
+    if (!address) return 0
+
+    try {
+      const functionArgs = [principalCV(owner), principalCV(spender)]
+      const serializedArgs = functionArgs.map((arg) => arg.serialize().toString("hex"))
+
+      const response = await fetch(
+        `${this.network.coreApiUrl}/v2/contracts/call-read/${contractAddress}/${contractName}/get-allowance`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sender: address,
+            arguments: serializedArgs,
+          }),
+        },
+      )
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch allowance: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+
+      if (!data.okay || !data.result) {
+        throw new Error(`Allowance query failed: ${data.error || "Unknown error"}`)
+      }
+
+      const cv = hexToCV(data.result)
+      const json = cvToJSON(cv)
+      const allowanceValue = typeof json.value === "string" 
+        ? Number.parseInt(json.value, 16) 
+        : Number(json.value)
+
+      return allowanceValue / 1000000
+    } catch (error) {
+      console.error("Error fetching USDCx allowance:", error)
+      return 0
+    }
+  }
+
+  /**
+   * Approve USDCx spending
+   */
+  async approveUSDCx(
+    amount: number,
+    spender: string,
+    contractAddress: string,
+    contractName = "usdcx-token",
+  ): Promise<string> {
+    const address = this.getAddress()
+    if (!address) {
+      throw new Error("Wallet not connected")
+    }
+
+    const amountMicro = Math.floor(amount * 1000000)
+
+    return await this.retry(
+      async () => {
+        const txOptions = {
+          contractAddress,
+          contractName,
+          functionName: "approve",
+          functionArgs: [principalCV(spender), uintCV(amountMicro)],
+          senderKey: address,
+          network: this.network,
+          anchorMode: AnchorMode.Any,
+          postConditionMode: PostConditionMode.Deny,
+        }
+
+        const transaction = await makeContractCall(txOptions)
+        const broadcastResponse = await broadcastTransaction(transaction, this.network)
+
+        if (broadcastResponse.error) {
+          const error = (broadcastResponse as TxBroadcastResultRejected).error
+          throw new Error(`Transaction failed: ${error}`)
+        }
+
+        return (broadcastResponse as TxBroadcastResultOk).txid
+      },
+      {
+        maxRetries: 3,
+        delayMs: 1000,
+        onRetry: (attempt, error) => {
+          console.warn(`Approve retry attempt ${attempt}:`, error)
+        },
+      },
+    )
+  }
+
+  /**
+   * Batch transfer USDCx to multiple recipients
+   */
+  async batchTransferUSDCx(
+    recipients: Array<{ recipient: string; amount: number }>,
+    contractAddress: string,
+    contractName = "usdcx-token",
+  ): Promise<string> {
+    const address = this.getAddress()
+    if (!address) {
+      throw new Error("Wallet not connected")
+    }
+
+    if (recipients.length === 0 || recipients.length > 20) {
+      throw new Error("Recipients list must have between 1 and 20 entries")
+    }
+
+    const recipientList = recipients.map((r) =>
+      tupleCV({
+        recipient: principalCV(r.recipient),
+        amount: uintCV(Math.floor(r.amount * 1000000)),
+      }),
+    )
+
+    return await this.retry(
+      async () => {
+        const txOptions = {
+          contractAddress,
+          contractName,
+          functionName: "batch-transfer",
+          functionArgs: [listCV(recipientList)],
+          senderKey: address,
+          network: this.network,
+          anchorMode: AnchorMode.Any,
+          postConditionMode: PostConditionMode.Deny,
+        }
+
+        const transaction = await makeContractCall(txOptions)
+        const broadcastResponse = await broadcastTransaction(transaction, this.network)
+
+        if (broadcastResponse.error) {
+          const error = (broadcastResponse as TxBroadcastResultRejected).error
+          throw new Error(`Transaction failed: ${error}`)
+        }
+
+        return (broadcastResponse as TxBroadcastResultOk).txid
+      },
+      {
+        maxRetries: 3,
+        delayMs: 1000,
+        onRetry: (attempt, error) => {
+          console.warn(`Batch transfer retry attempt ${attempt}:`, error)
+        },
+      },
+    )
+  }
+
+  /**
+   * Get multiple USDCx balances at once
+   */
+  async getBatchUSDCxBalances(
+    contractAddress: string,
+    addresses: string[],
+    contractName = "usdcx-token",
+  ): Promise<Map<string, number>> {
+    const balances = new Map<string, number>()
+
+    const balancePromises = addresses.map(async (address) => {
+      try {
+        const balance = await this.getUSDCxBalance(contractAddress, contractName, address)
+        return { address, balance }
+      } catch (error) {
+        console.error(`Failed to get balance for ${address}:`, error)
+        return { address, balance: 0 }
+      }
+    })
+
+    const results = await Promise.all(balancePromises)
+    results.forEach(({ address, balance }) => {
+      balances.set(address, balance)
+    })
+
+    return balances
   }
 }
 

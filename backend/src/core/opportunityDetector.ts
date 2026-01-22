@@ -1,3 +1,4 @@
+import { createHash } from "crypto"
 import type { PriceData } from "../config/types"
 import { logger } from "../utils/logger"
 import { PriceOracleError, ValidationError } from "../utils/errors"
@@ -29,7 +30,7 @@ export interface ExecutionStep {
   action: "swap" | "approve" | "bridge"
   chain: "ethereum" | "stacks"
   contract: string
-  params: Record<string, any>
+  params: Record<string, unknown>
   estimatedGas: number
 }
 
@@ -468,8 +469,7 @@ export class OpportunityDetector {
 
   private generateOpportunityId(direction: string, ethDex: string, stacksDex: string): string {
     const timestamp = Date.now()
-    const hash = require("crypto")
-      .createHash("md5")
+    const hash = createHash("md5")
       .update(`${direction}_${ethDex}_${stacksDex}_${timestamp}`)
       .digest("hex")
       .substring(0, 8)

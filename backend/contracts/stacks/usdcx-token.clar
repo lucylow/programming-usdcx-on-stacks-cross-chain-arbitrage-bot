@@ -25,6 +25,9 @@
 (define-constant ERR-INSUFFICIENT-BALANCE (err u1002))
 (define-constant ERR-PROTOCOL-PAUSED (err u1003))
 (define-constant ERR-INVALID-PRINCIPAL (err u1004))
+(define-constant ERR-INSUFFICIENT-ALLOWANCE (err u1005))
+(define-constant ERR-MAX-SUPPLY-EXCEEDED (err u1006))
+(define-constant ERR-INVALID-RECIPIENT (err u1007))
 
 ;; ==========================================
 ;; Data Variables & Maps
@@ -42,7 +45,14 @@
 )
 
 (define-data-var protocol-paused bool false)
+(define-data-var max-supply (optional uint) none)
 (define-constant CONTRACT-OWNER tx-sender)
+
+;; Allowance map: owner -> spender -> amount
+(define-map allowances
+  { owner: principal, spender: principal }
+  uint
+)
 
 ;; Grant deployer governance role
 (map-set roles 
@@ -66,6 +76,13 @@
   (asserts! (not (var-get protocol-paused)) ERR-PROTOCOL-PAUSED)
 )
 
+(define-private (check-max-supply (amount uint))
+  (match (var-get max-supply)
+    max (asserts! (<= (+ (ft-get-supply usdcx) amount) max) ERR-MAX-SUPPLY-EXCEEDED)
+    (ok true)
+  )
+)
+
 ;; ==========================================
 ;; SIP-010 Standard Functions
 ;; ==========================================
@@ -84,6 +101,7 @@
     )
     (try! (check-not-paused))
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    (asserts! (is-some (some recipient)) ERR-INVALID-RECIPIENT)
     (try! (ft-transfer? usdcx amount sender recipient))
     (match memo 
       m (print { event: "transfer", from: sender, to: recipient, amount: amount, memo: m })
@@ -134,6 +152,7 @@
     (asserts! (can-mint-or-burn) ERR-NOT-AUTHORIZED)
     (try! (check-not-paused))
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    (try! (check-max-supply amount))
     (try! (ft-mint? usdcx amount recipient))
     (print { event: "mint", amount: amount, recipient: recipient, total-supply: (ft-get-supply usdcx) })
     (ok true)
@@ -188,4 +207,100 @@
 
 (define-read-only (has-role (role (string-ascii 20)) (account principal))
   (ok (is-protocol-caller role account))
+)
+
+;; ==========================================
+;; Allowance Functions (SIP-010 Standard)
+;; ==========================================
+
+(define-read-only (get-allowance (owner principal) (spender principal))
+  (ok (default-to u0 (map-get? allowances { owner: owner, spender: spender })))
+)
+
+(define-public (approve (spender principal) (amount uint))
+  (begin
+    (try! (check-not-paused))
+    (asserts! (is-some (some spender)) ERR-INVALID-PRINCIPAL)
+    (map-set allowances { owner: tx-sender, spender: spender } amount)
+    (print { event: "approval", owner: tx-sender, spender: spender, amount: amount })
+    (ok true)
+  )
+)
+
+(define-public (transfer-from
+  (amount uint)
+  (sender principal)
+  (recipient principal)
+  (memo (optional (buff 34)))
+)
+  (let
+    (
+      (allowance-amount (default-to u0 (map-get? allowances { owner: sender, spender: tx-sender })))
+    )
+    (begin
+      (try! (check-not-paused))
+      (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+      (asserts! (>= allowance-amount amount) ERR-INSUFFICIENT-ALLOWANCE)
+      (asserts! (is-some (some recipient)) ERR-INVALID-RECIPIENT)
+      (try! (ft-transfer? usdcx amount sender recipient))
+      (map-set allowances { owner: sender, spender: tx-sender } (- allowance-amount amount))
+      (match memo 
+        m (print { event: "transfer-from", spender: tx-sender, from: sender, to: recipient, amount: amount, memo: m })
+        (print { event: "transfer-from", spender: tx-sender, from: sender, to: recipient, amount: amount })
+      )
+      (ok true)
+    )
+  )
+)
+
+;; ==========================================
+;; Batch Operations
+;; ==========================================
+
+(define-public (batch-transfer
+  (recipients (list 20 { recipient: principal, amount: uint }))
+)
+  (begin
+    (try! (check-not-paused))
+    (try! (fold batch-transfer-helper recipients (ok true)))
+    (ok true)
+  )
+)
+
+(define-private (batch-transfer-helper
+  (item { recipient: principal, amount: uint })
+  (result (response bool uint))
+)
+  (let
+    (
+      (recipient (get recipient item))
+      (amount (get amount item))
+    )
+    (begin
+      (try! result)
+      (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+      (asserts! (is-some (some recipient)) ERR-INVALID-RECIPIENT)
+      (try! (ft-transfer? usdcx amount tx-sender recipient))
+      (print { event: "batch-transfer", to: recipient, amount: amount })
+      (ok true)
+    )
+  )
+)
+
+;; ==========================================
+;; Supply Management
+;; ==========================================
+
+(define-public (set-max-supply (max uint))
+  (begin
+    (asserts! (is-protocol-caller GOVERNANCE-ROLE tx-sender) ERR-NOT-AUTHORIZED)
+    (asserts! (>= max (ft-get-supply usdcx)) ERR-INVALID-AMOUNT)
+    (var-set max-supply (some max))
+    (print { event: "max-supply-set", max: max })
+    (ok true)
+  )
+)
+
+(define-read-only (get-max-supply)
+  (ok (var-get max-supply))
 )

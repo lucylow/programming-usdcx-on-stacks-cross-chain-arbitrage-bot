@@ -8,6 +8,9 @@
 (define-constant ERR-INVALID-SIGNATURE (err u2002))
 (define-constant ERR-INVALID-AMOUNT (err u2003))
 (define-constant ERR-NOT-INITIALIZED (err u2004))
+(define-constant ERR-WITHDRAWAL-NOT-FOUND (err u2005))
+(define-constant ERR-WITHDRAWAL-ALREADY-PROCESSED (err u2006))
+(define-constant ERR-INVALID-REQUEST-ID (err u2007))
 
 (define-map processed-attestations
   { attestation-hash: (buff 32) }
@@ -21,7 +24,9 @@
     requester: principal,
     ethereum-recipient: (buff 20),
     timestamp: uint,
-    processed: bool
+    processed: bool,
+    processed-block: (optional uint),
+    processed-tx-hash: (optional (buff 32))
   }
 )
 
@@ -110,7 +115,9 @@
         requester: tx-sender,
         ethereum-recipient: ethereum-recipient,
         timestamp: ts,
-        processed: false
+        processed: false,
+        processed-block: none,
+        processed-tx-hash: none
       }
     )
 
@@ -158,7 +165,9 @@
         requester: tx-sender,
         ethereum-recipient: ethereum-recipient,
         timestamp: ts,
-        processed: false
+        processed: false,
+        processed-block: none,
+        processed-tx-hash: none
       }
     )
 
@@ -200,5 +209,72 @@
     (map-set relayers account enabled)
     (print { event: "relayer-updated", account: account, enabled: enabled })
     (ok true)
+  )
+)
+
+;; ==========================================
+;; Enhanced Withdrawal Management
+;; ==========================================
+
+;; Mark withdrawal as processed (relayer/admin only)
+(define-public (mark-withdrawal-processed
+  (request-id uint)
+  (tx-hash (buff 32))
+)
+  (begin
+    (asserts! (is-relayer-or-admin tx-sender) ERR-NOT-AUTHORIZED)
+    (asserts! (is-some (map-get? withdrawal-requests { request-id: request-id })) ERR-WITHDRAWAL-NOT-FOUND)
+    
+    (let
+      (
+        (request (unwrap-panic (map-get withdrawal-requests { request-id: request-id })))
+      )
+      (begin
+        (asserts! (not (get processed request)) ERR-WITHDRAWAL-ALREADY-PROCESSED)
+        (map-set withdrawal-requests
+          { request-id: request-id }
+          {
+            amount: (get amount request),
+            requester: (get requester request),
+            ethereum-recipient: (get ethereum-recipient request),
+            timestamp: (get timestamp request),
+            processed: true,
+            processed-block: (some block-height),
+            processed-tx-hash: (some tx-hash)
+          }
+        )
+        (print {
+          event: "withdrawal-processed",
+          request-id: request-id,
+          block-height: block-height,
+          tx-hash: tx-hash
+        })
+        (ok true)
+      )
+    )
+  )
+)
+
+;; Get withdrawal status with enhanced info
+(define-read-only (get-withdrawal-status (request-id uint))
+  (ok (map-get? withdrawal-requests { request-id: request-id }))
+)
+
+;; Get all pending withdrawals for a requester
+(define-read-only (get-pending-withdrawals (requester principal))
+  (ok u0) ;; Note: Clarity doesn't support filtering maps efficiently, 
+          ;; this would need to be tracked separately or queried off-chain
+)
+
+;; Get withdrawal count
+(define-read-only (get-withdrawal-count)
+  (ok (var-get request-nonce))
+)
+
+;; Check if withdrawal is pending
+(define-read-only (is-withdrawal-pending (request-id uint))
+  (match (map-get? withdrawal-requests { request-id: request-id })
+    request (ok (not (get processed request)))
+    (ok false)
   )
 )

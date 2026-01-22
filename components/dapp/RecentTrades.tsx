@@ -1,12 +1,53 @@
 "use client"
 
-import { ExternalLink, CheckCircle, XCircle, Clock, ArrowUpRight, ArrowDownRight } from "lucide-react"
+import { useMemo, useState } from "react"
+import { ExternalLink, CheckCircle, XCircle, Clock, ArrowUpRight, ArrowDownRight, Filter, ArrowUpDown } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useDapp } from "@/lib/dapp/DappProvider"
 
 export function RecentTrades() {
-  const { recentTrades } = useDapp()
+  const { recentTrades, isLoading } = useDapp()
+  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [sortBy, setSortBy] = useState<"profit" | "time" | "roi">("time")
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
+
+  const filteredAndSortedTrades = useMemo(() => {
+    let filtered = recentTrades
+
+    // Filter by status
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((t) => t.status === statusFilter)
+    }
+
+    // Sort
+    filtered = [...filtered].sort((a, b) => {
+      let comparison = 0
+      switch (sortBy) {
+        case "profit":
+          comparison = a.profit - b.profit
+          break
+        case "roi":
+          comparison = a.roi - b.roi
+          break
+        case "time":
+          comparison = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          break
+      }
+      return sortOrder === "asc" ? comparison : -comparison
+    })
+
+    return filtered
+  }, [recentTrades, statusFilter, sortBy, sortOrder])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -36,14 +77,62 @@ export function RecentTrades() {
     <Card className="bg-card-bg border-white/10 p-6">
       <h3 className="text-lg font-semibold mb-4">Recent Trades</h3>
 
+      {/* Filters and Sorting */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-muted-foreground" />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[140px] border-white/20 bg-transparent">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="success">Success</SelectItem>
+              <SelectItem value="failed">Failed</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="executing">Executing</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+            <SelectTrigger className="w-[140px] border-white/20 bg-transparent">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="time">Time</SelectItem>
+              <SelectItem value="profit">Profit</SelectItem>
+              <SelectItem value="roi">ROI</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+            className="border-white/20 bg-transparent"
+          >
+            {sortOrder === "asc" ? "↑" : "↓"}
+          </Button>
+        </div>
+      </div>
+
       <div className="space-y-3 max-h-[400px] overflow-y-auto">
-        {recentTrades.length === 0 ? (
+        {isLoading && recentTrades.length === 0 ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-black/20 rounded-lg p-4 border border-white/5">
+                <Skeleton className="h-24 w-full" />
+              </div>
+            ))}
+          </div>
+        ) : filteredAndSortedTrades.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Clock className="w-12 h-12 mx-auto mb-4 opacity-50" />
             <p>No trades executed yet</p>
           </div>
         ) : (
-          recentTrades.map((trade) => (
+          filteredAndSortedTrades.map((trade) => (
             <div key={trade.id} className="bg-black/20 rounded-lg p-4 border border-white/5">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">

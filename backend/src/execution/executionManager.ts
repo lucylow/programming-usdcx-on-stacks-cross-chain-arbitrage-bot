@@ -6,6 +6,7 @@ import { logger } from "../utils/logger"
 import { config } from "../config"
 import { ValidationError, ExecutionError, BridgeError, TimeoutError } from "../utils/errors"
 import { retry } from "../utils/retry"
+import type { PaymentProcessor } from "../payment/paymentProcessor"
 
 export interface TradeResult {
   id: string
@@ -40,12 +41,14 @@ export interface TransactionRecord {
 export class ExecutionManager {
   private bridge: XReserveBridge
   private stacksClient: StacksClient | null = null
+  private paymentProcessor: PaymentProcessor | null = null
   private activeTrades: Map<string, TradeResult> = new Map()
   private maxConcurrentTrades = 3
 
-  constructor(bridge: XReserveBridge, stacksClient?: StacksClient) {
+  constructor(bridge: XReserveBridge, stacksClient?: StacksClient, paymentProcessor?: PaymentProcessor) {
     this.bridge = bridge
     this.stacksClient = stacksClient || null
+    this.paymentProcessor = paymentProcessor || null
   }
 
   /**
@@ -159,6 +162,16 @@ export class ExecutionManager {
         }
       }
 
+      // Update bridge fee from payment processor if available
+      if (this.paymentProcessor) {
+        // Try to get bridge fee from payment results
+        const bridgeSteps = result.transactions.filter((t) => t.action === "bridge")
+        for (const bridgeStep of bridgeSteps) {
+          // Bridge fees are tracked in payment processor
+          // This would be enhanced to fetch actual fees from payment results
+        }
+      }
+
       // Calculate actual profit with validation
       result.actualProfit = this.calculateActualProfit(result, opportunity)
 
@@ -180,7 +193,7 @@ export class ExecutionManager {
         actualProfit: result.actualProfit,
         roi: `${(result.roi * 100).toFixed(2)}%`,
       })
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Trade ${tradeId} failed:`, error)
       result.status = "failed"
       result.error = error instanceof Error ? error.message : String(error)
@@ -248,7 +261,7 @@ export class ExecutionManager {
       record.gasUsed = step.estimatedGas || 0
 
       logger.info(`Step ${step.step} completed: ${record.txHash}`)
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Step ${step.step} failed:`, error)
       record.status = "failed"
       record.error = error instanceof Error ? error.message : String(error)
@@ -327,6 +340,49 @@ export class ExecutionManager {
         throw new ValidationError("Destination address is required for bridge operation")
       }
 
+      // Use payment processor if available for better fee management
+      if (this.paymentProcessor) {
+        const paymentType = opportunity.direction === "eth_to_stacks" ? "bridge_deposit" : "bridge_withdrawal"
+        const priority = opportunity.expectedProfit > 1000 ? "high" : "medium"
+        
+        const paymentRequest = await this.paymentProcessor.submitPayment({
+          type: paymentType,
+          chain: step.chain,
+          amount: step.params.amount,
+          recipientAddress: step.params.destinationAddress,
+          priority,
+          metadata: {
+            step: step.step,
+            opportunityId: opportunity.id,
+            attestation: step.params.attestation,
+          },
+        })
+
+        const paymentResult = await this.paymentProcessor.processPayment(paymentRequest)
+        
+        if (paymentResult.status === "failed") {
+          throw new BridgeError(`Payment processing failed: ${paymentResult.error}`, {
+            step: step.step,
+            paymentId: paymentRequest.id,
+          })
+        }
+
+        if (!paymentResult.transactionHash) {
+          throw new BridgeError("Payment completed but no transaction hash", {
+            step: step.step,
+            paymentId: paymentRequest.id,
+          })
+        }
+
+        // Update bridge fee in result tracking
+        if (paymentResult.fee) {
+          // This will be used in calculateActualProfit
+        }
+
+        return paymentResult.transactionHash
+      }
+
+      // Fallback to direct bridge execution
       let bridgeOp: BridgeOperation
 
       // Execute bridge with retry

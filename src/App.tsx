@@ -1,6 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -17,6 +18,7 @@ import AnalyticsRisk from "./pages/AnalyticsRisk";
 import Docs from "./pages/Docs";
 import FAQ from "./pages/FAQ";
 import Resources from "./pages/Resources";
+import InteractiveDemoPage from "./pages/InteractiveDemo";
 
 const queryClient = new QueryClient();
 
@@ -41,6 +43,7 @@ const AnimatedRoutes = () => {
           <Route path="/bot/history" element={<BotHistory />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/analytics/risk" element={<AnalyticsRisk />} />
+          <Route path="/demo" element={<InteractiveDemoPage />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/resources" element={<Resources />} />
@@ -52,19 +55,21 @@ const AnimatedRoutes = () => {
 };
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <StacksProvider network="testnet">
-        <DappProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <AnimatedRoutes />
-          </BrowserRouter>
-        </DappProvider>
-      </StacksProvider>
-    </TooltipProvider>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <StacksProvider network="testnet">
+          <DappProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <AnimatedRoutes />
+            </BrowserRouter>
+          </DappProvider>
+        </StacksProvider>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;
