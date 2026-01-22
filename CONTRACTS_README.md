@@ -165,6 +165,27 @@ await stacksContracts.voteOnProposal(senderKey, 1, 'for', 1000000);
 await stacksContracts.mintNFT(senderKey, 'My NFT', 'ipfs://...', 500);
 \`\`\`
 
+## Stacks Contract Improvements (USDCx / Bridge / Vault)
+
+### Arbitrage Vault
+- **Pull-based deposit**: `deposit(amount)` — vault transfers USDCx from caller in one tx; no prior approval.
+- **Real token ops**: Deposit pulls from user via `usdcx-token.transfer`; withdraw sends tokens to bot operator.
+- **Bridge integration**: `bridge-to-ethereum(amount, ethereum-recipient)` calls `burn-and-withdraw-from` on the bridge; burns vault balance, records withdrawal with requester = bot operator. `ethereum-recipient` is `(buff 20)` (20-byte address).
+- **Init guard**: One-time `initialize(bridge, bot-operator)`; owner stored in `contract-owner`.
+- **Read-only**: `get-bridge-contract`, `get-bot-operator`, `get-owner`, `get-min-profit`.
+
+### USDCx Bridge
+- **Relayer auth**: `deposit-and-mint` restricted to admin or `set-relayer`-authorized accounts (no longer token contract).
+- **`burn-and-withdraw-from`**: For vault bridging. Callable only when `contract-caller == owner`; burns `owner`’s USDCx, records `tx-sender` as requester.
+- **Init**: One-time `initialize()` by admin. Grant bridge **MINT_ROLE** on `usdcx-token` after deploy.
+
+### USDCx Token
+- **Transfer**: Allows `sender == tx-sender` or `sender == contract-caller` so contracts (e.g. vault) can transfer their own balance (e.g. on withdraw).
+- **Mint/burn**: `protocol-mint` / `protocol-burn` accept either `tx-sender` or `contract-caller` as having MINT_ROLE (bridge can mint/burn).
+
+### Backend
+- **`depositToVault`**: Single call to `vault.deposit(amount)`; vault pulls USDCx. USDCx contract params optional.
+
 ## Error Codes
 
 ### DAO Governance

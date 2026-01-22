@@ -148,7 +148,7 @@ export class XReserveBridge {
             originalError: error,
           })
         }
-        if (error.response?.status >= 500) {
+        if (error.response && error.response.status >= 500) {
           throw new BridgeError("Bridge service error", { status: error.response.status, originalError: error })
         }
       }
@@ -240,7 +240,7 @@ export class XReserveBridge {
             originalError: error,
           })
         }
-        if (error.response?.status >= 500) {
+        if (error.response && error.response.status >= 500) {
           throw new BridgeError("Bridge service error", { status: error.response.status, originalError: error })
         }
       }

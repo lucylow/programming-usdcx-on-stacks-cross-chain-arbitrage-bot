@@ -84,7 +84,7 @@
   )
 )
 
-;; Burn USDCx → Withdraw USDC (caller burns; requester recorded for relayer)
+;; Burn USDCx → Withdraw USDC (caller burns own balance; requester recorded for relayer)
 (define-public (burn-and-withdraw
   (amount uint)
   (ethereum-recipient (buff 20))
@@ -120,6 +120,55 @@
       event: "withdrawal",
       request-id: request-id,
       amount: amount,
+      requester: tx-sender,
+      ethereum-recipient: ethereum-recipient,
+      withdrawal-hash: withdrawal-hash
+    })
+
+    (ok request-id)
+  )
+)
+
+;; Burn from a contract (e.g. vault) that holds USDCx. Caller must be owner.
+;; Used when vault bridges: vault calls this with owner = self, bridge burns vault's balance.
+(define-public (burn-and-withdraw-from
+  (amount uint)
+  (owner principal)
+  (ethereum-recipient (buff 20))
+)
+  (let
+    (
+      (request-id (var-get request-nonce))
+      (ts (unwrap-panic (get-block-info? time block-height)))
+      (withdrawal-hash (sha256 (concat
+        (unwrap-panic (to-consensus-buff? amount))
+        ethereum-recipient
+      )))
+    )
+
+    (asserts! (is-eq contract-caller owner) ERR-NOT-AUTHORIZED)
+    (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+
+    (try! (contract-call? .usdcx-token protocol-burn amount owner))
+
+    (map-set withdrawal-requests
+      { request-id: request-id }
+      {
+        amount: amount,
+        requester: tx-sender,
+        ethereum-recipient: ethereum-recipient,
+        timestamp: ts,
+        processed: false
+      }
+    )
+
+    (var-set request-nonce (+ request-id u1))
+
+    (print {
+      event: "withdrawal-from",
+      request-id: request-id,
+      amount: amount,
+      owner: owner,
       requester: tx-sender,
       ethereum-recipient: ethereum-recipient,
       withdrawal-hash: withdrawal-hash

@@ -105,18 +105,18 @@
   )
 )
 
-;; Bridge USDCx to Ethereum via burn-and-withdraw
-;; Burns vault's USDCx and records withdrawal for relayer
+;; Bridge USDCx to Ethereum via burn-and-withdraw-from
+;; Burns vault's USDCx and records withdrawal for relayer; requester = bot operator
 (define-public (bridge-to-ethereum
   (amount uint)
   (ethereum-recipient (buff 20))
 )
-  (begin
+  (let ((vault-self (as-contract tx-sender)))
     (asserts! (var-get initialized) ERR-NOT-INITIALIZED)
     (asserts! (is-eq tx-sender (var-get bot-operator)) ERR-UNAUTHORIZED)
     (asserts! (>= (var-get vault-balance) amount) ERR-INSUFFICIENT-BALANCE)
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
-    (try! (contract-call? (var-get bridge-contract) burn-and-withdraw amount ethereum-recipient))
+    (try! (contract-call? (var-get bridge-contract) burn-and-withdraw-from amount vault-self ethereum-recipient))
     (var-set vault-balance (- (var-get vault-balance) amount))
     (print {
       event: "bridge-to-ethereum",

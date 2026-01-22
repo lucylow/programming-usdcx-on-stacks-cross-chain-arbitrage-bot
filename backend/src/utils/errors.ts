@@ -12,7 +12,10 @@ export class BotError extends Error {
   ) {
     super(message)
     this.name = this.constructor.name
-    Error.captureStackTrace(this, this.constructor)
+    // Error.captureStackTrace is Node.js specific, make it optional for browser compatibility
+    if (typeof Error.captureStackTrace === 'function') {
+      Error.captureStackTrace(this, this.constructor)
+    }
   }
 }
 

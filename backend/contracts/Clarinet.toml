@@ -1,0 +1,21 @@
+[project]
+name = "cross-chain-arbitrage"
+requirements = []
+[project.telemetry]
+[endpoint]
+url = "https://api.testnet.hiro.so"
+
+[[contracts]]
+name = "usdcx-token"
+path = "stacks/usdcx-token.clar"
+
+[[contracts]]
+name = "usdcx-bridge"
+path = "stacks/usdcx-bridge.clar"
+depends_on = ["usdcx-token"]
+
+[[contracts]]
+name = "arbitrage-vault"
+path = "stacks/arbitrage-vault.clar"
+depends_on = ["usdcx-token"]
+

@@ -4,7 +4,7 @@ import { StacksClient } from "../blockchain/stacksClient"
 import { StacksDexFactory } from "../blockchain/stacksDex"
 import { logger } from "../utils/logger"
 import { config } from "../config"
-import { ValidationError, ExecutionError } from "../utils/errors"
+import { ValidationError, ExecutionError, BridgeError, TimeoutError } from "../utils/errors"
 import { retry } from "../utils/retry"
 
 export interface TradeResult {
