@@ -1,9 +1,18 @@
 import type { PriceOracle, ArbitrageOpportunity } from "./priceOracle"
 import { config } from "../config"
 import { logger } from "../utils/logger"
-import { ExecutionError, ValidationError, NetworkError } from "../utils/errors"
+import {
+  ExecutionError,
+  ValidationError,
+  NetworkError,
+  withErrorCorrelation,
+  withErrorLogging,
+  wrapError,
+  errorMetrics,
+} from "../utils/errors"
 import { retry } from "../utils/retry"
 import { NFTMinter, type TradeStats } from "../nft/nftMinter"
+import { AnalyticsService } from "./analyticsService"
 
 export interface Trade {
   id: string
@@ -22,6 +31,7 @@ export class ArbitrageEngine {
   private scanInterval: NodeJS.Timeout | null = null
   private nftMinter?: NFTMinter
   private traderStats: Map<string, TradeStats> = new Map()
+  private analyticsService: AnalyticsService
 
   // Performance metrics
   private metrics = {
@@ -32,9 +42,10 @@ export class ArbitrageEngine {
     totalVolume: 0,
   }
 
-  constructor(priceOracle: PriceOracle, nftMinter?: NFTMinter) {
+  constructor(priceOracle: PriceOracle, nftMinter?: NFTMinter, analyticsService?: AnalyticsService) {
     this.priceOracle = priceOracle
     this.nftMinter = nftMinter
+    this.analyticsService = analyticsService || new AnalyticsService()
   }
 
   async start(): Promise<void> {
@@ -47,9 +58,12 @@ export class ArbitrageEngine {
       logger.info("Starting Arbitrage Engine...")
       this.isRunning = true
 
-      // Start opportunity scanning
+      // Start opportunity scanning with error handling
       this.scanInterval = setInterval(() => {
-        this.scanOpportunities().catch((error) => {
+        withErrorCorrelation(
+          () => this.scanOpportunities(),
+        ).catch((error) => {
+          errorMetrics.recordError(error, { operation: "scanOpportunities" })
           logger.error("Unhandled error in scanOpportunities:", error)
         })
       }, 1000) // Scan every second
@@ -88,7 +102,15 @@ export class ArbitrageEngine {
         .slice(0, config.risk.maxConcurrentTrades)
         .filter((opp) => this.shouldExecute(opp))
         .map((opportunity) =>
-          this.executeTrade(opportunity).catch((error) => {
+          withErrorCorrelation(
+            () => this.executeTrade(opportunity),
+            undefined,
+          ).catch((error) => {
+            errorMetrics.recordError(error, {
+              operation: "executeTrade",
+              ethDex: opportunity.ethDex,
+              stacksDex: opportunity.stacksDex,
+            })
             logger.error(`Failed to execute trade for opportunity ${opportunity.ethDex}-${opportunity.stacksDex}:`, error)
             // Don't throw - continue with other trades
           }),
@@ -228,11 +250,36 @@ export class ArbitrageEngine {
       this.metrics.successfulTrades++
       this.metrics.totalProfit += trade.profit
 
+      // Record analytics
+      const executionTime = trade.endTime - trade.startTime
+      const gasCost = 5 + Math.random() * 25 // Simulated
+      const bridgeFee = 10 + Math.random() * 20 // Simulated
+      
+      this.analyticsService.recordPerformance({
+        totalProfit: trade.profit,
+        totalTrades: 1,
+        profitableTrades: 1,
+        totalVolume: 10000, // Default volume since ArbitrageOpportunity doesn't include trade size
+        avgProfitPerTrade: trade.profit,
+        winRate: 1,
+        maxProfit: trade.profit,
+        maxLoss: 0,
+        sharpeRatio: 2.0,
+        executionTime,
+        gasCost,
+        bridgeFee,
+      })
+
       logger.info(`Trade ${tradeId} completed successfully. Profit: $${trade.profit.toFixed(2)}`)
 
       // Check and mint NFT badge if enabled
       if (this.nftMinter && config.stacks.walletAddress) {
         this.handleTradeCompletionForNFT(config.stacks.walletAddress, trade.profit).catch((error) => {
+          errorMetrics.recordError(error, {
+            operation: "handleTradeCompletionForNFT",
+            tradeId,
+            walletAddress: config.stacks.walletAddress,
+          })
           logger.error("Error handling NFT minting for trade completion:", error)
         })
       }
@@ -245,13 +292,35 @@ export class ArbitrageEngine {
 
       this.metrics.failedTrades++
 
+      // Record error with context
+      const opportunityId = `${opportunity.ethDex}-${opportunity.stacksDex}-${opportunity.timestamp}`
+      errorMetrics.recordError(error, {
+        tradeId,
+        opportunityId,
+        ethDex: opportunity.ethDex,
+        stacksDex: opportunity.stacksDex,
+      })
+
       logger.error(`Trade ${tradeId} failed:`, error)
 
       // Re-throw critical errors
-      if (error instanceof ValidationError || error instanceof NetworkError) {
-        throw error
+      if (error instanceof ValidationError || error instanceof NetworkError || error instanceof ExecutionError) {
+        throw wrapError(error, {
+          tradeId,
+          opportunityId,
+        })
       }
-      return tradeId
+      
+      // Wrap and throw non-critical errors as ExecutionError
+      throw new ExecutionError(
+        `Trade execution failed: ${error instanceof Error ? error.message : String(error)}`,
+        undefined,
+        {
+          tradeId,
+          opportunityId,
+          originalError: error,
+        },
+      )
     } finally {
       this.metrics.totalTrades++
     }
@@ -270,34 +339,32 @@ export class ArbitrageEngine {
   }
 
   private async executeRealTrade(trade: Trade): Promise<void> {
-    try {
-      // Validate trade
-      if (!trade || !trade.opportunity) {
-        throw new ValidationError("Invalid trade data for execution")
-      }
+    return withErrorLogging(
+      async () => {
+        // Validate trade
+        if (!trade || !trade.opportunity) {
+          throw new ValidationError("Invalid trade data for execution", {
+            tradeId: trade.id,
+            hasOpportunity: !!trade.opportunity,
+          })
+        }
 
-      // Real trade execution would involve:
-      // 1. Approve tokens
-      // 2. Execute swap on source chain
-      // 3. Bridge tokens
-      // 4. Execute swap on destination chain
-      // 5. Bridge back (if needed)
+        // Real trade execution would involve:
+        // 1. Approve tokens
+        // 2. Execute swap on source chain
+        // 3. Bridge tokens
+        // 4. Execute swap on destination chain
+        // 5. Bridge back (if needed)
 
-      // For now, throw a more descriptive error
-      throw new ExecutionError(
-        "Real trade execution not implemented - use demo mode for testing",
-        undefined,
-        { tradeId: trade.id },
-      )
-    } catch (error) {
-      if (error instanceof ExecutionError || error instanceof ValidationError) {
-        throw error
-      }
-      throw new ExecutionError("Failed to execute real trade", undefined, {
-        tradeId: trade.id,
-        originalError: error,
-      })
-    }
+        // For now, throw a more descriptive error
+        throw new ExecutionError(
+          "Real trade execution not implemented - use demo mode for testing",
+          undefined,
+          { tradeId: trade.id },
+        )
+      },
+      { tradeId: trade.id, operation: "executeRealTrade" },
+    )
   }
 
   private generateTradeId(): string {
@@ -358,5 +425,9 @@ export class ArbitrageEngine {
       activeTrades: this.getActiveTrades().length,
       metrics: this.getMetrics(),
     }
+  }
+
+  getAnalyticsService(): AnalyticsService {
+    return this.analyticsService
   }
 }

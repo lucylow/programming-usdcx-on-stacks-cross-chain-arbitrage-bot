@@ -1,5 +1,5 @@
 import { AppConfig, showConnect, UserSession } from "@stacks/connect"
-import { StacksMainnet, StacksTestnet, StacksNetwork } from "@stacks/network"
+import { StacksNetwork, STACKS_MAINNET, STACKS_TESTNET } from "@stacks/network"
 import {
   makeContractCall,
   broadcastTransaction,
@@ -59,14 +59,23 @@ interface RetryOptions {
 }
 
 export class StacksWalletService {
-  private network: StacksMainnet | StacksTestnet
+  private network: StacksNetwork
   private networkType: "mainnet" | "testnet"
   private transactionHistory: TransactionHistory[] = []
+  private apiUrl: string
 
   constructor(networkType: "mainnet" | "testnet" = "testnet") {
     this.networkType = networkType
-    this.network = networkType === "mainnet" ? new StacksMainnet() : new StacksTestnet()
+    this.network = networkType === "mainnet" ? STACKS_MAINNET : STACKS_TESTNET
+    // Get API URL based on network type
+    this.apiUrl = networkType === "mainnet" 
+      ? "https://api.stacks.co" 
+      : "https://api.testnet.hiro.so"
     this.loadTransactionHistory()
+  }
+
+  private getApiUrl(): string {
+    return this.apiUrl
   }
 
   /**
@@ -129,7 +138,7 @@ export class StacksWalletService {
   ): Promise<FeeEstimate> {
     try {
       // Get fee rate from network
-      const feeRateResponse = await fetch(`${this.network.coreApiUrl}/v2/fees/transfer`)
+      const feeRateResponse = await fetch(`${this.getApiUrl()}/v2/fees/transfer`)
       const feeRateData = await feeRateResponse.json()
       const feeRate = Number.parseInt(feeRateData.fee_rate || "1000", 10)
 
@@ -251,6 +260,15 @@ export class StacksWalletService {
     return userSession.isUserSignedIn()
   }
 
+  /**
+   * Transfer USDCx tokens using wallet signing
+   * Note: This method requires the user to sign the transaction via their wallet
+   * For programmatic signing, use a backend service with private key access
+   * 
+   * IMPORTANT: This method should be used with the Connect library's doContractCall
+   * in React components. This class method is provided for compatibility but
+   * may not work correctly in all browser environments.
+   */
   async transferUSDCx(
     amount: number,
     recipient: string,
@@ -263,10 +281,21 @@ export class StacksWalletService {
       throw new Error("Wallet not connected")
     }
 
+    if (!userSession.isUserSignedIn()) {
+      throw new Error("User session not signed in")
+    }
+
     const amountMicro = Math.floor(amount * 1000000) // Convert to 6 decimals
 
     return await this.retry(
       async () => {
+        // Get user data for signing
+        const userData = userSession.loadUserData()
+        if (!userData || !userData.appPrivateKey) {
+          throw new Error("Unable to get app private key from session")
+        }
+
+        // Build transaction options for wallet signing
         const txOptions = {
           contractAddress,
           contractName,
@@ -275,23 +304,33 @@ export class StacksWalletService {
             uintCV(amountMicro),
             principalCV(address),
             principalCV(recipient),
-            memo ? { type: 10, value: { type: 2, data: memo } } as any : noneCV(),
+            memo ? stringUtf8CV(memo) : noneCV(),
           ],
-          senderKey: address, // This should be the private key in production
           network: this.network,
           anchorMode: AnchorMode.Any,
           postConditionMode: PostConditionMode.Deny,
+          senderKey: userData.appPrivateKey,
         }
 
+        // Use userSession to sign and broadcast
         const transaction = await makeContractCall(txOptions)
-        const broadcastResponse = await broadcastTransaction(transaction, this.network)
+        const broadcastResponse = await broadcastTransaction({ transaction })
 
-        if (broadcastResponse.error) {
+        if ("error" in broadcastResponse && broadcastResponse.error) {
           const error = (broadcastResponse as TxBroadcastResultRejected).error
           throw new Error(`Transaction failed: ${error}`)
         }
 
-        return (broadcastResponse as TxBroadcastResultOk).txid
+        const txId = (broadcastResponse as TxBroadcastResultOk).txid
+        
+        // Add to transaction history
+        this.addToHistory({
+          txId,
+          type: "transfer",
+          status: "pending",
+        })
+
+        return txId
       },
       {
         maxRetries: 3,
@@ -307,12 +346,16 @@ export class StacksWalletService {
     const targetAddress = address || this.getAddress()
     if (!targetAddress) return 0
 
-    try {
-      const functionArgs = [principalCV(targetAddress)]
-      const serializedArgs = functionArgs.map((arg) => arg.serialize().toString("hex"))
+      try {
+        const functionArgs = [principalCV(targetAddress)]
+        // Serialize using cvToJSON and hex encoding
+        const serializedArgs = functionArgs.map((arg) => {
+          const json = cvToJSON(arg)
+          return Buffer.from(JSON.stringify(json)).toString("hex")
+        })
 
-      const response = await fetch(
-        `${this.network.coreApiUrl}/v2/contracts/call-read/${contractAddress}/${contractName}/get-balance`,
+        const response = await fetch(
+          `${this.getApiUrl()}/v2/contracts/call-read/${contractAddress}/${contractName}/get-balance`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -366,14 +409,23 @@ export class StacksWalletService {
       anchorMode: AnchorMode.Any,
     }
 
-    const transaction = await makeContractCall(txOptions)
-    const broadcastResponse = await broadcastTransaction(transaction, this.network)
-
-    if (broadcastResponse.error) {
-      throw new Error(`Withdrawal failed: ${broadcastResponse.error}`)
+    const userData = userSession.loadUserData()
+    if (!userData || !userData.appPrivateKey) {
+      throw new Error("Unable to get app private key from session")
     }
 
-    return broadcastResponse.txid
+    const transaction = await makeContractCall({
+      ...txOptions,
+      senderKey: userData.appPrivateKey,
+    })
+    const broadcastResponse = await broadcastTransaction({ transaction })
+
+    if ("error" in broadcastResponse && broadcastResponse.error) {
+      const error = (broadcastResponse as TxBroadcastResultRejected).error
+      throw new Error(`Withdrawal failed: ${error}`)
+    }
+
+    return (broadcastResponse as TxBroadcastResultOk).txid
   }
 
   async getTransactionStatus(txId: string): Promise<TransactionStatus> {
@@ -381,7 +433,7 @@ export class StacksWalletService {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
 
-      const response = await fetch(`${this.network.coreApiUrl}/extended/v1/tx/${txId}`, {
+      const response = await fetch(`${this.getApiUrl()}/extended/v1/tx/${txId}`, {
         signal: controller.signal,
       })
       
@@ -497,7 +549,10 @@ export class StacksWalletService {
    */
   switchNetwork(networkType: "mainnet" | "testnet"): void {
     this.networkType = networkType
-    this.network = networkType === "mainnet" ? new StacksMainnet() : new StacksTestnet()
+    this.network = networkType === "mainnet" ? STACKS_MAINNET : STACKS_TESTNET
+    this.apiUrl = networkType === "mainnet" 
+      ? "https://api.stacks.co" 
+      : "https://api.testnet.hiro.so"
   }
 
   /**
@@ -508,7 +563,7 @@ export class StacksWalletService {
     if (!targetAddress) return 0
 
     try {
-      const response = await fetch(`${this.network.coreApiUrl}/extended/v1/address/${targetAddress}/stx`)
+      const response = await fetch(`${this.getApiUrl()}/extended/v1/address/${targetAddress}/stx`)
       if (!response.ok) {
         throw new Error(`Failed to fetch STX balance: ${response.statusText}`)
       }
@@ -528,7 +583,7 @@ export class StacksWalletService {
     if (!targetAddress) return 0
 
     try {
-      const response = await fetch(`${this.network.coreApiUrl}/v2/accounts/${targetAddress}?proof=0`)
+      const response = await fetch(`${this.getApiUrl()}/v2/accounts/${targetAddress}?proof=0`)
       if (!response.ok) {
         throw new Error(`Failed to fetch nonce: ${response.statusText}`)
       }
@@ -549,7 +604,7 @@ export class StacksWalletService {
 
     try {
       const response = await fetch(
-        `${this.network.coreApiUrl}/extended/v1/address/${targetAddress}/transactions?limit=${limit}`,
+        `${this.getApiUrl()}/extended/v1/address/${targetAddress}/transactions?limit=${limit}`,
       )
       if (!response.ok) {
         throw new Error(`Failed to fetch transactions: ${response.statusText}`)
@@ -576,10 +631,13 @@ export class StacksWalletService {
 
     try {
       const functionArgs = [principalCV(owner), principalCV(spender)]
-      const serializedArgs = functionArgs.map((arg) => arg.serialize().toString("hex"))
+      const serializedArgs = functionArgs.map((arg) => {
+        const json = cvToJSON(arg)
+        return Buffer.from(JSON.stringify(json)).toString("hex")
+      })
 
       const response = await fetch(
-        `${this.network.coreApiUrl}/v2/contracts/call-read/${contractAddress}/${contractName}/get-allowance`,
+        `${this.getApiUrl()}/v2/contracts/call-read/${contractAddress}/${contractName}/get-allowance`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -614,7 +672,7 @@ export class StacksWalletService {
   }
 
   /**
-   * Approve USDCx spending
+   * Approve USDCx spending using wallet signing
    */
   async approveUSDCx(
     amount: number,
@@ -627,30 +685,48 @@ export class StacksWalletService {
       throw new Error("Wallet not connected")
     }
 
+    if (!userSession.isUserSignedIn()) {
+      throw new Error("User session not signed in")
+    }
+
     const amountMicro = Math.floor(amount * 1000000)
 
     return await this.retry(
       async () => {
+        const userData = userSession.loadUserData()
+        if (!userData || !userData.appPrivateKey) {
+          throw new Error("Unable to get app private key from session")
+        }
+
         const txOptions = {
           contractAddress,
           contractName,
           functionName: "approve",
           functionArgs: [principalCV(spender), uintCV(amountMicro)],
-          senderKey: address,
+          senderKey: userData.appPrivateKey,
           network: this.network,
           anchorMode: AnchorMode.Any,
           postConditionMode: PostConditionMode.Deny,
         }
 
         const transaction = await makeContractCall(txOptions)
-        const broadcastResponse = await broadcastTransaction(transaction, this.network)
+        const broadcastResponse = await broadcastTransaction({ transaction })
 
-        if (broadcastResponse.error) {
+        if ("error" in broadcastResponse && broadcastResponse.error) {
           const error = (broadcastResponse as TxBroadcastResultRejected).error
           throw new Error(`Transaction failed: ${error}`)
         }
 
-        return (broadcastResponse as TxBroadcastResultOk).txid
+        const txId = (broadcastResponse as TxBroadcastResultOk).txid
+        
+        // Add to transaction history
+        this.addToHistory({
+          txId,
+          type: "approve",
+          status: "pending",
+        })
+
+        return txId
       },
       {
         maxRetries: 3,
@@ -663,7 +739,7 @@ export class StacksWalletService {
   }
 
   /**
-   * Batch transfer USDCx to multiple recipients
+   * Batch transfer USDCx to multiple recipients using wallet signing
    */
   async batchTransferUSDCx(
     recipients: Array<{ recipient: string; amount: number }>,
@@ -673,6 +749,10 @@ export class StacksWalletService {
     const address = this.getAddress()
     if (!address) {
       throw new Error("Wallet not connected")
+    }
+
+    if (!userSession.isUserSignedIn()) {
+      throw new Error("User session not signed in")
     }
 
     if (recipients.length === 0 || recipients.length > 20) {
@@ -688,26 +768,40 @@ export class StacksWalletService {
 
     return await this.retry(
       async () => {
+        const userData = userSession.loadUserData()
+        if (!userData || !userData.appPrivateKey) {
+          throw new Error("Unable to get app private key from session")
+        }
+
         const txOptions = {
           contractAddress,
           contractName,
           functionName: "batch-transfer",
           functionArgs: [listCV(recipientList)],
-          senderKey: address,
+          senderKey: userData.appPrivateKey,
           network: this.network,
           anchorMode: AnchorMode.Any,
           postConditionMode: PostConditionMode.Deny,
         }
 
         const transaction = await makeContractCall(txOptions)
-        const broadcastResponse = await broadcastTransaction(transaction, this.network)
+        const broadcastResponse = await broadcastTransaction({ transaction })
 
-        if (broadcastResponse.error) {
+        if ("error" in broadcastResponse && broadcastResponse.error) {
           const error = (broadcastResponse as TxBroadcastResultRejected).error
           throw new Error(`Transaction failed: ${error}`)
         }
 
-        return (broadcastResponse as TxBroadcastResultOk).txid
+        const txId = (broadcastResponse as TxBroadcastResultOk).txid
+        
+        // Add to transaction history
+        this.addToHistory({
+          txId,
+          type: "batch-transfer",
+          status: "pending",
+        })
+
+        return txId
       },
       {
         maxRetries: 3,

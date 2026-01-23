@@ -95,41 +95,111 @@ export class StacksClient {
     }
   }
 
+  private nonceCache: { nonce: number; timestamp: number } | null = null
+  private readonly NONCE_CACHE_TTL = 5000 // 5 seconds
+
   /**
-   * Get the current nonce for the account
+   * Get the current nonce for the account with caching
    */
-  async getNonce(): Promise<number> {
+  async getNonce(forceRefresh = false): Promise<number> {
+    // Use cached nonce if still valid
+    if (!forceRefresh && this.nonceCache) {
+      const age = Date.now() - this.nonceCache.timestamp
+      if (age < this.NONCE_CACHE_TTL) {
+        return this.nonceCache.nonce
+      }
+    }
+
     try {
       const response = await fetch(`${this.apiUrl}/v2/accounts/${this.address}?proof=0`)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch nonce: ${response.statusText}`)
+      }
       const data = await response.json()
-      return data.nonce || 0
+      const nonce = data.nonce || 0
+      
+      // Cache the nonce
+      this.nonceCache = { nonce, timestamp: Date.now() }
+      
+      return nonce
     } catch (error) {
       logger.error("Failed to get nonce:", error)
-      return 0
+      // Return cached nonce if available, otherwise 0
+      return this.nonceCache?.nonce || 0
     }
   }
 
   /**
-   * Get account balance in STX
+   * Increment nonce cache (call after successful transaction)
    */
-  async getBalance(): Promise<number> {
+  private incrementNonceCache(): void {
+    if (this.nonceCache) {
+      this.nonceCache.nonce++
+      this.nonceCache.timestamp = Date.now()
+    }
+  }
+
+  private balanceCache: { balance: number; timestamp: number } | null = null
+  private readonly BALANCE_CACHE_TTL = 10000 // 10 seconds
+
+  /**
+   * Get account balance in STX with caching
+   */
+  async getBalance(forceRefresh = false): Promise<number> {
+    // Use cached balance if still valid
+    if (!forceRefresh && this.balanceCache) {
+      const age = Date.now() - this.balanceCache.timestamp
+      if (age < this.BALANCE_CACHE_TTL) {
+        return this.balanceCache.balance
+      }
+    }
+
     try {
       const response = await fetch(`${this.apiUrl}/v2/accounts/${this.address}?proof=0`)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch balance: ${response.statusText}`)
+      }
       const data = await response.json()
-      return Number.parseInt(data.balance, 16) / 1e6 // Convert from microSTX to STX
+      const balance = Number.parseInt(data.balance, 16) / 1e6 // Convert from microSTX to STX
+      
+      // Cache the balance
+      this.balanceCache = { balance, timestamp: Date.now() }
+      
+      return balance
     } catch (error) {
       logger.error("Failed to get balance:", error)
-      return 0
+      // Return cached balance if available, otherwise 0
+      return this.balanceCache?.balance || 0
     }
   }
 
   /**
-   * Estimate gas for a contract call
+   * Get current fee rate from network
+   */
+  private async getFeeRate(): Promise<number> {
+    try {
+      const response = await fetch(`${this.apiUrl}/v2/fees/transfer`)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch fee rate: ${response.statusText}`)
+      }
+      const data = await response.json()
+      return Number.parseInt(data.fee_rate || "1000", 10)
+    } catch (error) {
+      logger.warn("Failed to fetch fee rate, using default:", error)
+      return 1000 // Default fee rate
+    }
+  }
+
+  /**
+   * Estimate gas for a contract call with improved accuracy
    */
   async estimateGas(options: Omit<StacksTransactionOptions, "senderKey" | "nonce">): Promise<GasEstimate> {
     try {
+      const feeRate = await this.getFeeRate()
       const nonce = await this.getNonce()
       const { postConditions, ...rest } = options
+      
+      // Build transaction to estimate size
       const transaction = await makeContractCall({
         ...rest,
         postConditions: (postConditions ?? []) as PostCondition[],
@@ -140,23 +210,33 @@ export class StacksClient {
         postConditionMode: options.postConditionMode || PostConditionMode.Deny,
       })
 
-      // Estimate fee (in microSTX)
-      // Note: fee is set when creating the transaction, default to a reasonable estimate
-      const estimatedFee = options.fee || 1000 // Default to 1000 microSTX if not specified
-      const estimatedCost = estimatedFee / 1e6 // Convert to STX
+      // Estimate transaction size more accurately
+      // Base size: ~200 bytes, each function arg: ~50-100 bytes, post conditions: ~100 bytes each
+      const baseSize = 200
+      const argsSize = options.functionArgs.length * 75
+      const postConditionsSize = (postConditions?.length || 0) * 100
+      const estimatedSize = baseSize + argsSize + postConditionsSize
+      
+      // Calculate fee based on size and fee rate
+      const estimatedMicroStx = estimatedSize * feeRate
+      const estimatedCost = estimatedMicroStx / 1e6
+
+      // Add 20% buffer for safety
+      const bufferedMicroStx = Math.ceil(estimatedMicroStx * 1.2)
+      const bufferedCost = bufferedMicroStx / 1e6
 
       return {
-        estimatedCost,
-        estimatedMicroStx: estimatedFee,
-        estimatedFeeRate: 1, // Default fee rate
+        estimatedCost: bufferedCost,
+        estimatedMicroStx: bufferedMicroStx,
+        estimatedFeeRate: feeRate,
       }
     } catch (error: unknown) {
       logger.error("Gas estimation failed:", error)
-      // Return conservative estimate
+      // Return conservative estimate with higher buffer
       return {
-        estimatedCost: 0.001, // 0.001 STX
-        estimatedMicroStx: 1000,
-        estimatedFeeRate: 1,
+        estimatedCost: 0.002, // 0.002 STX (conservative)
+        estimatedMicroStx: 2000,
+        estimatedFeeRate: 1000,
       }
     }
   }
@@ -639,5 +719,121 @@ export class StacksClient {
    */
   getPrivateKey(): string {
     return this.privateKey
+  }
+
+  /**
+   * Batch execute multiple contract calls sequentially
+   * Useful for multi-step operations that must execute in order
+   */
+  async batchContractCalls(
+    calls: Array<Omit<StacksTransactionOptions, "senderKey" | "nonce">>,
+    options?: {
+      waitForConfirmations?: boolean
+      confirmationTimeout?: number
+    },
+  ): Promise<Array<{ txId: string; status: TransactionStatus }>> {
+    const results: Array<{ txId: string; status: TransactionStatus }> = []
+    let currentNonce = await this.getNonce()
+
+    for (let i = 0; i < calls.length; i++) {
+      const call = calls[i]
+      try {
+        logger.info(`Batch call ${i + 1}/${calls.length}: ${call.contractName}.${call.functionName}`)
+
+        const txId = await this.contractCall({
+          ...call,
+          senderKey: this.privateKey,
+          nonce: currentNonce++,
+        })
+
+        let status: TransactionStatus
+        if (options?.waitForConfirmations) {
+          status = await this.waitForConfirmation(
+            txId,
+            options.confirmationTimeout || 300000,
+          )
+        } else {
+          status = await this.getTransactionStatus(txId)
+        }
+
+        results.push({ txId, status })
+
+        // If transaction failed, stop batch execution
+        if (status.status === "failed") {
+          logger.error(`Batch call ${i + 1} failed, stopping batch execution`)
+          break
+        }
+      } catch (error) {
+        logger.error(`Batch call ${i + 1} failed:`, error)
+        // Add failed result and continue or break based on requirements
+        results.push({
+          txId: "",
+          status: {
+            txId: "",
+            status: "failed",
+            error: getErrorMessage(error),
+          },
+        })
+        // Break on error to prevent invalid state
+        break
+      }
+    }
+
+    return results
+  }
+
+  /**
+   * Check if account has sufficient STX balance for transaction
+   */
+  async hasSufficientBalance(requiredStx: number): Promise<boolean> {
+    const balance = await this.getBalance()
+    return balance >= requiredStx
+  }
+
+  /**
+   * Validate transaction before execution
+   */
+  async validateTransaction(options: StacksTransactionOptions): Promise<{
+    valid: boolean
+    errors: string[]
+    warnings: string[]
+  }> {
+    const errors: string[] = []
+    const warnings: string[] = []
+
+    // Check balance
+    const gasEstimate = await this.estimateGas({
+      contractAddress: options.contractAddress,
+      contractName: options.contractName,
+      functionName: options.functionName,
+      functionArgs: options.functionArgs,
+      anchorMode: options.anchorMode,
+      postConditionMode: options.postConditionMode,
+      postConditions: options.postConditions,
+    })
+
+    const balance = await this.getBalance()
+    if (balance < gasEstimate.estimatedCost) {
+      errors.push(`Insufficient STX balance: ${balance} < ${gasEstimate.estimatedCost}`)
+    } else if (balance < gasEstimate.estimatedCost * 2) {
+      warnings.push(`Low STX balance: ${balance} (recommended: ${gasEstimate.estimatedCost * 2})`)
+    }
+
+    // Validate nonce
+    const nonce = await this.getNonce()
+    if (options.nonce !== undefined && options.nonce < nonce) {
+      errors.push(`Nonce too low: ${options.nonce} < ${nonce}`)
+    }
+
+    // Validate contract address format
+    if (!options.contractAddress.startsWith("SP") && !options.contractAddress.startsWith("ST")) {
+      errors.push(`Invalid contract address format: ${options.contractAddress}`)
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+    }
   }
 }

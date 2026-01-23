@@ -1,8 +1,9 @@
 import { Card } from "@/components/ui/card"
-import { HelpCircle, ChevronDown } from "lucide-react"
+import { HelpCircle, ChevronDown, BookOpen, ExternalLink } from "lucide-react"
 import Navigation from "@/components/layout/Navigation"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
+import { Link } from "react-router-dom"
 
 const faqs = [
   {
@@ -90,13 +91,27 @@ export default function FAQ() {
 
           <Card className="bg-card-bg/50 border-white/10 p-6 mt-12">
             <h3 className="font-semibold mb-2">Still have questions?</h3>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground mb-4">
               Check out our{" "}
-              <a href="/docs" className="text-accent hover:underline">
+              <Link to="/docs" className="text-accent hover:underline">
                 documentation
-              </a>{" "}
+              </Link>{" "}
               or reach out to our support team.
             </p>
+            <div className="flex flex-wrap gap-3 pt-4 border-t border-white/10">
+              <Link to="/docs" className="flex items-center gap-2 text-sm text-accent hover:underline">
+                <BookOpen className="w-4 h-4" />
+                Documentation
+              </Link>
+              <Link to="/resources" className="flex items-center gap-2 text-sm text-accent hover:underline">
+                <ExternalLink className="w-4 h-4" />
+                Resources
+              </Link>
+              <Link to="/demo" className="flex items-center gap-2 text-sm text-accent hover:underline">
+                <ExternalLink className="w-4 h-4" />
+                Interactive Demo
+              </Link>
+            </div>
           </Card>
         </div>
       </div>

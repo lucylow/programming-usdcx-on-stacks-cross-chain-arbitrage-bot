@@ -1652,3 +1652,715 @@ export async function retryWithCorrelation<T>(
   })
 }
 
+// ==================== Enhanced Error Handling Utilities ====================
+
+/**
+ * Error notification handler interface
+ */
+export interface ErrorNotificationHandler {
+  notify(error: unknown, context?: ErrorContext): void | Promise<void>
+}
+
+/**
+ * Error notification manager
+ */
+export class ErrorNotificationManager {
+  private handlers: ErrorNotificationHandler[] = []
+  private suppressedErrors: Set<string> = new Set()
+  private notificationThrottle: Map<string, number> = new Map()
+  private readonly throttleWindow = 60000 // 1 minute
+
+  /**
+   * Register an error notification handler
+   */
+  registerHandler(handler: ErrorNotificationHandler): void {
+    this.handlers.push(handler)
+  }
+
+  /**
+   * Unregister an error notification handler
+   */
+  unregisterHandler(handler: ErrorNotificationHandler): void {
+    const index = this.handlers.indexOf(handler)
+    if (index > -1) {
+      this.handlers.splice(index, 1)
+    }
+  }
+
+  /**
+   * Suppress errors matching a pattern (for non-critical errors)
+   */
+  suppressError(pattern: string | RegExp): void {
+    const key = pattern instanceof RegExp ? pattern.toString() : pattern
+    this.suppressedErrors.add(key)
+  }
+
+  /**
+   * Check if error should be suppressed
+   */
+  private shouldSuppress(error: unknown): boolean {
+    const message = getErrorMessage(error).toLowerCase()
+    for (const patternStr of this.suppressedErrors) {
+      // Try to parse as RegExp (format: "/pattern/flags")
+      try {
+        const match = patternStr.match(/^\/(.+)\/([gimsuy]*)$/)
+        if (match) {
+          const regex = new RegExp(match[1], match[2])
+          if (regex.test(message)) return true
+        } else {
+          // Treat as string pattern
+          if (message.includes(patternStr.toLowerCase())) return true
+        }
+      } catch {
+        // If RegExp parsing fails, treat as string
+        if (message.includes(patternStr.toLowerCase())) return true
+      }
+    }
+    return false
+  }
+
+  /**
+   * Check if notification should be throttled
+   */
+  private shouldThrottle(errorCode: ErrorCode): boolean {
+    const now = Date.now()
+    const lastNotification = this.notificationThrottle.get(errorCode)
+    
+    if (!lastNotification) {
+      this.notificationThrottle.set(errorCode, now)
+      return false
+    }
+
+    if (now - lastNotification < this.throttleWindow) {
+      return true
+    }
+
+    this.notificationThrottle.set(errorCode, now)
+    return false
+  }
+
+  /**
+   * Notify all handlers about an error
+   */
+  async notify(error: unknown, context?: ErrorContext): Promise<void> {
+    if (this.shouldSuppress(error)) {
+      return
+    }
+
+    const errorCode = getErrorCode(error)
+    if (this.shouldThrottle(errorCode)) {
+      return
+    }
+
+    const promises = this.handlers.map((handler) => {
+      try {
+        return Promise.resolve(handler.notify(error, context))
+      } catch (handlerError) {
+        // Don't throw if handler fails
+        console.error("Error notification handler failed:", handlerError)
+        return Promise.resolve()
+      }
+    })
+
+    await Promise.allSettled(promises)
+  }
+
+  /**
+   * Clear notification throttle
+   */
+  clearThrottle(): void {
+    this.notificationThrottle.clear()
+  }
+}
+
+/**
+ * Global error notification manager
+ */
+export const errorNotificationManager = new ErrorNotificationManager()
+
+/**
+ * Execute with automatic error notification
+ */
+export async function withErrorNotification<T>(
+  fn: () => Promise<T>,
+  context?: ErrorContext,
+): Promise<T> {
+  try {
+    return await fn()
+  } catch (error) {
+    await errorNotificationManager.notify(error, context)
+    throw error
+  }
+}
+
+/**
+ * Error transformation function type
+ */
+export type ErrorTransformer = (error: unknown) => BotError
+
+/**
+ * Error transformation registry
+ */
+export class ErrorTransformerRegistry {
+  private transformers: Map<string, ErrorTransformer> = new Map()
+
+  /**
+   * Register a transformer for a specific error pattern
+   */
+  register(pattern: string | RegExp, transformer: ErrorTransformer): void {
+    const key = pattern instanceof RegExp ? pattern.toString() : pattern
+    this.transformers.set(key, transformer)
+  }
+
+  /**
+   * Transform an error using registered transformers
+   */
+  transform(error: unknown): BotError {
+    if (error instanceof BotError) {
+      return error
+    }
+
+    const message = getErrorMessage(error).toLowerCase()
+    
+    for (const [pattern, transformer] of this.transformers.entries()) {
+      try {
+        const regex = new RegExp(pattern)
+        if (regex.test(message)) {
+          return transformer(error)
+        }
+      } catch {
+        // If pattern is not a regex, check for substring match
+        if (message.includes(pattern.toLowerCase())) {
+          return transformer(error)
+        }
+      }
+    }
+
+    // Default transformation
+    return parseError(error)
+  }
+}
+
+/**
+ * Global error transformer registry
+ */
+export const errorTransformerRegistry = new ErrorTransformerRegistry()
+
+/**
+ * Execute with error transformation
+ */
+export async function withErrorTransformation<T>(
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn()
+  } catch (error) {
+    throw errorTransformerRegistry.transform(error)
+  }
+}
+
+/**
+ * Error suppression options
+ */
+export interface ErrorSuppressionOptions {
+  patterns?: (string | RegExp)[]
+  errorCodes?: ErrorCode[]
+  maxSuppressions?: number
+  suppressionWindow?: number
+}
+
+/**
+ * Error suppressor for handling non-critical errors
+ */
+export class ErrorSuppressor {
+  private suppressions: Map<string, number> = new Map()
+  private readonly maxSuppressions: number
+  private readonly suppressionWindow: number
+  private readonly patterns: (string | RegExp)[]
+  private readonly errorCodes: Set<ErrorCode>
+
+  constructor(options: ErrorSuppressionOptions = {}) {
+    this.maxSuppressions = options.maxSuppressions || 10
+    this.suppressionWindow = options.suppressionWindow || 60000 // 1 minute
+    this.patterns = options.patterns || []
+    this.errorCodes = new Set(options.errorCodes || [])
+  }
+
+  /**
+   * Check if error should be suppressed
+   */
+  shouldSuppress(error: unknown): boolean {
+    const errorCode = getErrorCode(error)
+    if (this.errorCodes.has(errorCode)) {
+      return true
+    }
+
+    const message = getErrorMessage(error).toLowerCase()
+    for (const pattern of this.patterns) {
+      if (pattern instanceof RegExp) {
+        if (pattern.test(message)) return true
+      } else {
+        if (message.includes(pattern.toLowerCase())) return true
+      }
+    }
+
+    return false
+  }
+
+  /**
+   * Record a suppression
+   */
+  recordSuppression(error: unknown): boolean {
+    if (!this.shouldSuppress(error)) {
+      return false
+    }
+
+    const key = getErrorCode(error)
+    const now = Date.now()
+    const count = this.suppressions.get(key) || 0
+
+    if (count >= this.maxSuppressions) {
+      // Clean old suppressions
+      this.cleanup()
+      return false
+    }
+
+    this.suppressions.set(key, count + 1)
+    return true
+  }
+
+  private cleanup(): void {
+    const now = Date.now()
+    for (const [key, timestamp] of this.suppressions.entries()) {
+      if (now - timestamp > this.suppressionWindow) {
+        this.suppressions.delete(key)
+      }
+    }
+  }
+
+  /**
+   * Reset suppressions
+   */
+  reset(): void {
+    this.suppressions.clear()
+  }
+}
+
+/**
+ * Execute with error suppression for non-critical errors
+ */
+export async function withErrorSuppression<T>(
+  fn: () => Promise<T>,
+  suppressor: ErrorSuppressor,
+  onSuppressed?: (error: unknown) => void,
+): Promise<T> {
+  try {
+    return await fn()
+  } catch (error) {
+    if (suppressor.recordSuppression(error)) {
+      if (onSuppressed) {
+        onSuppressed(error)
+      }
+      // Return undefined or throw based on use case
+      throw error // Still throw, but it's been suppressed from notifications
+    }
+    throw error
+  }
+}
+
+/**
+ * Error recovery action type
+ */
+export type ErrorRecoveryAction<T> = (error: unknown, attempt: number) => Promise<T> | T | null
+
+/**
+ * Error recovery configuration
+ */
+export interface ErrorRecoveryConfig<T> {
+  maxAttempts?: number
+  recoveryActions?: ErrorRecoveryAction<T>[]
+  shouldAttemptRecovery?: (error: unknown, attempt: number) => boolean
+  onRecoverySuccess?: (result: T, attempt: number) => void
+  onRecoveryFailure?: (error: unknown, attempt: number) => void
+}
+
+/**
+ * Execute with error recovery actions
+ */
+export async function withErrorRecoveryActions<T>(
+  fn: () => Promise<T>,
+  config: ErrorRecoveryConfig<T> = {},
+): Promise<T> {
+  const {
+    maxAttempts = 3,
+    recoveryActions = [],
+    shouldAttemptRecovery = () => true,
+    onRecoverySuccess,
+    onRecoveryFailure,
+  } = config
+
+  let lastError: unknown
+  let attempt = 0
+
+  while (attempt < maxAttempts) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error
+      attempt++
+
+      if (!shouldAttemptRecovery(error, attempt)) {
+        throw error
+      }
+
+      // Try recovery actions
+      for (const action of recoveryActions) {
+        try {
+          const result = await Promise.resolve(action(error, attempt))
+          if (result !== null) {
+            if (onRecoverySuccess) {
+              onRecoverySuccess(result, attempt)
+            }
+            return result
+          }
+        } catch (recoveryError) {
+          // Continue to next recovery action
+          continue
+        }
+      }
+
+      if (onRecoveryFailure) {
+        onRecoveryFailure(error, attempt)
+      }
+
+      if (attempt >= maxAttempts) {
+        throw error
+      }
+    }
+  }
+
+  throw lastError
+}
+
+/**
+ * Error context merger
+ */
+export function mergeErrorContext(
+  base?: ErrorContext,
+  additional?: ErrorContext,
+): ErrorContext {
+  if (!base && !additional) {
+    return {}
+  }
+  if (!base) return additional || {}
+  if (!additional) return base
+  return { ...base, ...additional }
+}
+
+/**
+ * Enhanced error logger interface
+ */
+export interface ErrorLogger {
+  log(error: unknown, context?: ErrorContext, level?: "error" | "warn" | "info"): void
+}
+
+/**
+ * Default error logger implementation
+ */
+export class DefaultErrorLogger implements ErrorLogger {
+  log(error: unknown, context?: ErrorContext, level: "error" | "warn" | "info" = "error"): void {
+    const message = getErrorMessage(error)
+    const code = getErrorCode(error)
+    const sanitizedError = sanitizeError(error)
+    
+    const logData = {
+      error: sanitizedError,
+      code,
+      context: context ? sanitizeError(context) : undefined,
+      timestamp: new Date().toISOString(),
+    }
+
+    // Use console methods based on level
+    switch (level) {
+      case "warn":
+        console.warn(`[${code}] ${message}`, logData)
+        break
+      case "info":
+        console.info(`[${code}] ${message}`, logData)
+        break
+      default:
+        console.error(`[${code}] ${message}`, logData)
+    }
+  }
+}
+
+/**
+ * Global error logger instance
+ */
+export const errorLogger = new DefaultErrorLogger()
+
+/**
+ * Execute with enhanced error logging
+ */
+export async function withErrorLogging<T>(
+  fn: () => Promise<T>,
+  context?: ErrorContext,
+  level: "error" | "warn" | "info" = "error",
+): Promise<T> {
+  try {
+    return await fn()
+  } catch (error) {
+    errorLogger.log(error, context, level)
+    throw error
+  }
+}
+
+/**
+ * Batch error handler for processing multiple operations
+ */
+export async function batchWithErrorHandling<T, R>(
+  items: T[],
+  processor: (item: T, index: number) => Promise<R>,
+  options: {
+    continueOnError?: boolean
+    onItemError?: (error: unknown, item: T, index: number) => void
+    onBatchComplete?: (results: Array<{ success: boolean; data?: R; error?: unknown; item: T; index: number }>) => void
+  } = {},
+): Promise<Array<{ success: boolean; data?: R; error?: unknown; item: T; index: number }>> {
+  const { continueOnError = true, onItemError, onBatchComplete } = options
+
+  const results = await Promise.allSettled(
+    items.map(async (item, index) => {
+      try {
+        const data = await processor(item, index)
+        return { success: true, data, item, index }
+      } catch (error) {
+        if (onItemError) {
+          onItemError(error, item, index)
+        }
+        if (!continueOnError) {
+          throw error
+        }
+        return { success: false, error, item, index }
+      }
+    }),
+  )
+
+  const processedResults = results.map((result, index) => {
+    if (result.status === "fulfilled") {
+      return result.value
+    }
+    return { success: false, error: result.reason, item: items[index], index }
+  })
+
+  if (onBatchComplete) {
+    onBatchComplete(processedResults)
+  }
+
+  return processedResults
+}
+
+/**
+ * Error rate limiter to prevent error spam
+ */
+export class ErrorRateLimiter {
+  private errors: Array<{ timestamp: number; code: ErrorCode }> = []
+  private readonly maxErrors: number
+  private readonly timeWindow: number
+
+  constructor(maxErrors: number = 100, timeWindowMs: number = 60000) {
+    this.maxErrors = maxErrors
+    this.timeWindow = timeWindowMs
+  }
+
+  /**
+   * Check if error should be rate limited
+   */
+  shouldLimit(error: unknown): boolean {
+    this.cleanup()
+    return this.errors.length >= this.maxErrors
+  }
+
+  /**
+   * Record an error
+   */
+  record(error: unknown): void {
+    const code = getErrorCode(error)
+    this.errors.push({ timestamp: Date.now(), code })
+    this.cleanup()
+  }
+
+  private cleanup(): void {
+    const now = Date.now()
+    const cutoff = now - this.timeWindow
+    this.errors = this.errors.filter((e) => e.timestamp > cutoff)
+  }
+
+  /**
+   * Get current error rate
+   */
+  getErrorRate(): number {
+    this.cleanup()
+    return this.errors.length
+  }
+
+  /**
+   * Reset rate limiter
+   */
+  reset(): void {
+    this.errors = []
+  }
+}
+
+/**
+ * Execute with error rate limiting
+ */
+export async function withErrorRateLimit<T>(
+  fn: () => Promise<T>,
+  limiter: ErrorRateLimiter,
+): Promise<T> {
+  try {
+    return await fn()
+  } catch (error) {
+    if (limiter.shouldLimit(error)) {
+      // Rate limit exceeded - still throw but mark as rate limited
+      throw new RateLimitError(
+        "Error rate limit exceeded. Too many errors in time window.",
+        undefined,
+        { errorCode: getErrorCode(error) },
+      )
+    }
+    limiter.record(error)
+    throw error
+  }
+}
+
+/**
+ * Error handler chain for sequential error processing
+ */
+export class ErrorHandlerChain {
+  private handlers: Array<(error: unknown, context?: ErrorContext) => Promise<unknown> | unknown> = []
+
+  /**
+   * Add a handler to the chain
+   */
+  addHandler(
+    handler: (error: unknown, context?: ErrorContext) => Promise<unknown> | unknown,
+  ): this {
+    this.handlers.push(handler)
+    return this
+  }
+
+  /**
+   * Process error through all handlers
+   */
+  async process(error: unknown, context?: ErrorContext): Promise<unknown> {
+    let processedError = error
+
+    for (const handler of this.handlers) {
+      try {
+        processedError = await Promise.resolve(handler(processedError, context))
+      } catch (handlerError) {
+        // If handler throws, use the original error
+        processedError = error
+        break
+      }
+    }
+
+    return processedError
+  }
+
+  /**
+   * Clear all handlers
+   */
+  clear(): void {
+    this.handlers = []
+  }
+}
+
+/**
+ * Execute with error handler chain
+ */
+export async function withErrorHandlerChain<T>(
+  fn: () => Promise<T>,
+  chain: ErrorHandlerChain,
+  context?: ErrorContext,
+): Promise<T> {
+  try {
+    return await fn()
+  } catch (error) {
+    const processedError = await chain.process(error, context)
+    throw processedError
+  }
+}
+
+/**
+ * Safe promise all that handles errors gracefully
+ */
+export async function safePromiseAll<T>(
+  promises: Promise<T>[],
+  options: {
+    onError?: (error: unknown, index: number) => void
+    defaultValue?: T
+  } = {},
+): Promise<Array<{ success: boolean; data?: T; error?: unknown; index: number }>> {
+  const { onError, defaultValue } = options
+
+  const results = await Promise.allSettled(
+    promises.map(async (promise, index) => {
+      try {
+        const data = await promise
+        return { success: true, data, index }
+      } catch (error) {
+        if (onError) {
+          onError(error, index)
+        }
+        return { success: false, error, data: defaultValue, index }
+      }
+    }),
+  )
+
+  return results.map((result, index) => {
+    if (result.status === "fulfilled") {
+      return result.value
+    }
+    return { success: false, error: result.reason, data: defaultValue, index }
+  })
+}
+
+/**
+ * Error context validator
+ */
+export function validateErrorContext(context: unknown): context is ErrorContext {
+  if (!context || typeof context !== "object") {
+    return false
+  }
+
+  // Check for known context properties
+  const knownKeys = ["step", "dex", "operation", "stakeId", "chain", "correlationId"]
+  const keys = Object.keys(context)
+  
+  // All keys should be strings
+  return keys.every((key) => typeof key === "string")
+}
+
+/**
+ * Create error with full context
+ */
+export function createErrorWithContext(
+  message: string,
+  code: ErrorCode,
+  context?: ErrorContext,
+  options?: ErrorOptions,
+): BotError {
+  const validatedContext = context && validateErrorContext(context) ? context : undefined
+  
+  return new BotError(
+    message,
+    code,
+    options?.statusCode || 500,
+    options?.retryable || false,
+    validatedContext,
+  )
+}
+

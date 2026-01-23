@@ -7,7 +7,7 @@ import {
   stringAsciiCV,
   stringUtf8CV,
   listCV,
-  buffCV,
+  bufferCV,
   cvToJSON,
   hexToCV,
   ClarityValue,
@@ -124,7 +124,7 @@ export class DaoGovernanceService {
       logger.info(`Creating proposal: ${title}`)
 
       // Convert calldata strings to buff CVs
-      const calldataCVs = calldata.map((data) => buffCV(Buffer.from(data, "hex")))
+      const calldataCVs = calldata.map((data) => bufferCV(Buffer.from(data, "hex")))
 
       const txId = await this.stacksClient.contractCall({
         contractAddress: this.daoContractAddress,
@@ -196,7 +196,7 @@ export class DaoGovernanceService {
         contractAddress: this.daoContractAddress,
         contractName: this.daoContractName,
         functionName: "vote-on-proposal",
-        functionArgs: [uintCV(proposalId), buffCV(supportBuff), uintCV(votingPower)],
+        functionArgs: [uintCV(proposalId), bufferCV(supportBuff), uintCV(votingPower)],
         senderKey: this.stacksClient.getPrivateKey(),
         anchorMode: AnchorMode.Any,
         postConditionMode: PostConditionMode.Deny,

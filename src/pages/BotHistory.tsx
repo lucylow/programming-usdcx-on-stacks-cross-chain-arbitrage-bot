@@ -1,5 +1,5 @@
 import { Card, CardContent } from "../components/ui/card"
-import { FileText, Filter, Download, Calendar, TrendingUp, TrendingDown, Search, RefreshCw, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react"
+import { FileText, Filter, Download, Calendar, TrendingUp, TrendingDown, Search, RefreshCw, ChevronLeft, ChevronRight, ExternalLink, BarChart3, Zap } from "lucide-react"
 import Navigation from "../components/layout/Navigation"
 import { Button } from "../components/ui/button"
 import { EmptyState } from "../../components/ui/empty-state"
@@ -8,6 +8,7 @@ import { useState } from "react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { Badge } from "../components/ui/badge"
 import { motion } from "framer-motion"
+import { Link, useNavigate } from "react-router-dom"
 
 export default function BotHistory() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -57,6 +58,18 @@ export default function BotHistory() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Link to="/bot/dashboard">
+                  <Button variant="outline" className="gap-2">
+                    <BarChart3 className="w-4 h-4" />
+                    <span className="hidden sm:inline">Dashboard</span>
+                  </Button>
+                </Link>
+                <Link to="/bot/opportunities">
+                  <Button variant="outline" className="gap-2">
+                    <Zap className="w-4 h-4" />
+                    <span className="hidden sm:inline">Opportunities</span>
+                  </Button>
+                </Link>
                 <motion.div
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -132,11 +145,11 @@ export default function BotHistory() {
                 description="Your completed trades will appear here once the bot starts executing arbitrage opportunities. Start the bot and connect your wallet to begin trading."
                 action={{
                   label: "Go to Dashboard",
-                  onClick: () => window.location.href = "/bot/dashboard",
+                  onClick: () => navigate("/bot/dashboard"),
                 }}
                 secondaryAction={{
                   label: "View Opportunities",
-                  onClick: () => window.location.href = "/bot/opportunities",
+                  onClick: () => navigate("/bot/opportunities"),
                 }}
               />
             </motion.div>

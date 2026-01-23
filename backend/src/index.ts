@@ -4,6 +4,7 @@ import cors from "cors"
 import { config, validateConfig } from "./config"
 import { PriceOracle } from "./core/priceOracle"
 import { ArbitrageEngine } from "./core/arbitrageEngine"
+import { RiskManager } from "./core/riskManager"
 import { logger } from "./utils/logger"
 import {
   Web3DataProvider,
@@ -33,6 +34,7 @@ import { validateRequest, validators } from "./middleware/validation"
 // Initialize existing services
 const priceOracle = new PriceOracle()
 const arbitrageEngine = new ArbitrageEngine(priceOracle)
+const riskManager = new RiskManager()
 
 // Initialize Web3 services
 const rpcUrls = new Map<number, string>()
@@ -65,7 +67,7 @@ const multiChainService = new MultiChainService(
 const nftContractAddress = process.env.NFT_CONTRACT_ADDRESS || "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"
 const marketplaceAddress = process.env.NFT_MARKETPLACE_ADDRESS
 const nftService = new NFTService(
-  config.stacks.network,
+  config.stacks.network || "testnet",
   nftContractAddress,
   "privacy-badge-nft",
   marketplaceAddress,
@@ -80,9 +82,10 @@ let daoGovernanceService: DaoGovernanceService | null = null
 if (config.stacks.privateKey) {
   try {
     const stacksClient = new StacksClient({
-      network: config.stacks.network,
+      network: config.stacks.network || "testnet",
       privateKey: config.stacks.privateKey,
       rpcUrl: config.stacks.rpcUrl,
+      walletAddress: config.stacks.walletAddress || "",
     })
     daoGovernanceService = new DaoGovernanceService(
       stacksClient,
@@ -234,6 +237,66 @@ app.get("/api/performance", asyncHandler(async (req: Request, res: Response) => 
     },
     res,
   )
+}))
+
+// ==================== Analytics Endpoints ====================
+
+app.get("/api/analytics/performance", asyncHandler(async (req: Request, res: Response) => {
+  const period = (req.query.period as "hourly" | "daily" | "weekly" | "monthly") || "daily"
+  const limit = Number.parseInt(req.query.limit as string) || 100
+
+  const analyticsService = arbitrageEngine.getAnalyticsService()
+  const data = analyticsService.getPerformanceData(period, limit)
+
+  successResponse(
+    {
+      period,
+      data,
+      count: data.length,
+    },
+    res,
+  )
+}))
+
+app.get("/api/analytics/patterns", asyncHandler(async (req: Request, res: Response) => {
+  const period = (req.query.period as "hourly" | "daily" | "weekly" | "monthly") || "daily"
+
+  const analyticsService = arbitrageEngine.getAnalyticsService()
+  const patterns = analyticsService.analyzePatterns(period)
+
+  successResponse(patterns, res)
+}))
+
+app.get("/api/analytics/insights", asyncHandler(async (req: Request, res: Response) => {
+  const analyticsService = arbitrageEngine.getAnalyticsService()
+  const insights = analyticsService.getStrategyInsights()
+
+  successResponse(
+    {
+      insights,
+      count: insights.length,
+    },
+    res,
+  )
+}))
+
+app.get("/api/analytics/summary", asyncHandler(async (req: Request, res: Response) => {
+  const period = (req.query.period as "hourly" | "daily" | "weekly" | "monthly") || "daily"
+
+  const analyticsService = arbitrageEngine.getAnalyticsService()
+  const summary = analyticsService.getSummary(period)
+
+  successResponse(summary, res)
+}))
+
+app.get("/api/risk/metrics", asyncHandler(async (req: Request, res: Response) => {
+  const comprehensiveMetrics = riskManager.getComprehensiveRiskMetrics()
+  successResponse(comprehensiveMetrics, res)
+}))
+
+app.get("/api/risk/metrics/basic", asyncHandler(async (req: Request, res: Response) => {
+  const basicMetrics = riskManager.getRiskMetrics()
+  successResponse(basicMetrics, res)
 }))
 
 app.get("/api/prices", asyncHandler(async (req: Request, res: Response) => {

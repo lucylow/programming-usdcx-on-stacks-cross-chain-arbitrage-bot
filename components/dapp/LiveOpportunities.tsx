@@ -1,30 +1,38 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Zap, ArrowRight, Clock, TrendingUp, Loader2, Filter, ArrowUpDown } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Zap, ArrowRight, Clock, TrendingUp, Loader2, Filter, ArrowUpDown, Shield, Timer, Eye } from "lucide-react"
+import type { ArbitrageOpportunity } from "../../lib/dapp/types"
+import { Button } from "../../src/components/ui/button"
+import { Card } from "../../src/components/ui/card"
+import { Badge } from "../../src/components/ui/badge"
+import { Skeleton } from "../../src/components/ui/skeleton"
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../src/components/ui/tooltip"
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { useDapp } from "@/lib/dapp/DappProvider"
-import { useStacks } from "@/lib/stacks/StacksProvider"
+} from "../../src/components/ui/select"
+import { useDapp } from "../../lib/dapp/DappProvider"
+import { useStacks } from "../../lib/stacks/StacksProvider"
 import { toast } from "sonner"
+import { OpportunityDetailModal } from "./OpportunityDetailModal"
 
-export function LiveOpportunities() {
+interface LiveOpportunitiesProps {
+  embedded?: boolean
+}
+
+export function LiveOpportunities({ embedded = false }: LiveOpportunitiesProps) {
   const { opportunities, executeOpportunity, wallet, isLoading } = useDapp()
   const { isSignedIn } = useStacks()
   const [executingId, setExecutingId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [sortBy, setSortBy] = useState<"spread" | "profit" | "time">("spread")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
+  const [selectedOpportunity, setSelectedOpportunity] = useState<ArbitrageOpportunity | null>(null)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
 
   const handleExecute = async (id: string) => {
     if (!isSignedIn) {
@@ -37,12 +45,42 @@ export function LiveOpportunities() {
       const success = await executeOpportunity(id)
       if (success) {
         toast.success("Trade execution started!")
+        setIsDetailModalOpen(false)
       } else {
         toast.error("Failed to execute trade")
       }
     } finally {
       setExecutingId(null)
     }
+  }
+
+  const handleViewDetails = (opp: ArbitrageOpportunity) => {
+    // Could open a modal or navigate to details page
+    console.log("View details for opportunity:", opp)
+  }
+
+  // Calculate risk level
+  const getRiskLevel = (opp: ArbitrageOpportunity): "low" | "medium" | "high" => {
+    if (opp.confidence >= 0.8 && opp.spread >= 1.0) return "low"
+    if (opp.confidence >= 0.6 && opp.spread >= 0.5) return "medium"
+    return "high"
+  }
+
+  // Estimate execution time
+  const getEstimatedExecutionTime = (opp: ArbitrageOpportunity): number => {
+    return Math.round(
+      (opp.tradeSize / 10000) * 2 +
+      (opp.sourceChain === "ethereum" ? 15 : 30) +
+      (opp.targetChain === "ethereum" ? 15 : 30) +
+      180
+    )
+  }
+
+  const formatTime = (seconds: number): string => {
+    if (seconds < 60) return `${seconds}s`
+    const minutes = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${minutes}m ${secs}s`
   }
 
   const getStatusColor = (status: string) => {
@@ -92,8 +130,8 @@ export function LiveOpportunities() {
 
   const activeOpportunities = opportunities.filter((o) => o.status === "active")
 
-  return (
-    <Card className="bg-card-bg border-white/10 p-6">
+  const content = (
+    <>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Zap className="w-5 h-5 text-brand" />
@@ -160,88 +198,140 @@ export function LiveOpportunities() {
             <p className="text-sm mt-2">The bot is scanning for arbitrage opportunities...</p>
           </div>
         ) : (
-          filteredAndSortedOpportunities.slice(0, 10).map((opp) => (
-            <div
-              key={opp.id}
-              className="bg-black/20 rounded-lg p-4 border border-white/5 hover:border-white/10 transition-colors"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-white">{opp.tokenPair}</span>
-                  <Badge className={getStatusColor(opp.status)}>{opp.status}</Badge>
-                </div>
-                <div className="flex items-center gap-1 text-muted-foreground text-sm">
-                  <Clock className="w-3 h-3" />
-                  {new Date(opp.detectedAt).toLocaleTimeString()}
-                </div>
-              </div>
+          filteredAndSortedOpportunities.slice(0, 10).map((opp) => {
+            const riskLevel = getRiskLevel(opp)
+            const estimatedTime = getEstimatedExecutionTime(opp)
+            const riskColors = {
+              low: "bg-green-500/20 text-green-400 border-green-500/30",
+              medium: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+              high: "bg-red-500/20 text-red-400 border-red-500/30",
+            }
 
-              <div className="flex items-center gap-3 mb-3">
-                <div className="flex-1 bg-black/30 rounded p-2 text-center">
-                  <div className="text-xs text-muted-foreground mb-1">{opp.sourceDex}</div>
-                  <div className="text-sm font-medium">${opp.sourcePrice.toFixed(4)}</div>
-                </div>
-                <ArrowRight className="w-5 h-5 text-accent" />
-                <div className="flex-1 bg-black/30 rounded p-2 text-center">
-                  <div className="text-xs text-muted-foreground mb-1">{opp.targetDex}</div>
-                  <div className="text-sm font-medium">${opp.targetPrice.toFixed(4)}</div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Spread: </span>
-                    <span className="text-accent font-medium">{opp.spread.toFixed(2)}%</span>
+            return (
+              <div
+                key={opp.id}
+                className="bg-black/20 rounded-lg p-4 border border-white/5 hover:border-white/10 hover:border-primary/30 transition-all cursor-pointer group"
+                onClick={() => handleViewDetails(opp)}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-white">{opp.tokenPair}</span>
+                    <Badge className={getStatusColor(opp.status)}>{opp.status}</Badge>
+                    <Badge className={riskColors[riskLevel]} variant="outline">
+                      <Shield className="w-3 h-3 mr-1" />
+                      {riskLevel.toUpperCase()}
+                    </Badge>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Est. Profit: </span>
-                    <span className="text-accent font-medium">${opp.expectedProfit.toFixed(2)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Confidence: </span>
-                    <span className="font-medium">{(opp.confidence * 100).toFixed(0)}%</span>
+                  <div className="flex items-center gap-1 text-muted-foreground text-sm">
+                    <Clock className="w-3 h-3" />
+                    {new Date(opp.detectedAt).toLocaleTimeString()}
                   </div>
                 </div>
 
-                {opp.status === "active" && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span>
-                        <Button
-                          size="sm"
-                          onClick={() => handleExecute(opp.id)}
-                          disabled={executingId === opp.id || !wallet.connected}
-                          className="bg-brand hover:bg-brand-dark"
-                        >
-                          {executingId === opp.id ? (
-                            <>
-                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                              Executing...
-                            </>
-                          ) : (
-                            <>
-                              <TrendingUp className="w-3 h-3 mr-1" />
-                              Execute
-                            </>
-                          )}
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {!wallet.connected
-                        ? "Connect wallet to execute"
-                        : executingId === opp.id
-                          ? "Executing trade..."
-                          : `Execute trade with ${opp.expectedProfit.toFixed(2)} profit`}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex-1 bg-black/30 rounded p-2 text-center">
+                    <div className="text-xs text-muted-foreground mb-1 capitalize">{opp.sourceChain}</div>
+                    <div className="text-xs text-muted-foreground mb-1">{opp.sourceDex}</div>
+                    <div className="text-sm font-medium">${opp.sourcePrice.toFixed(4)}</div>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-accent" />
+                  <div className="flex-1 bg-black/30 rounded p-2 text-center">
+                    <div className="text-xs text-muted-foreground mb-1 capitalize">{opp.targetChain}</div>
+                    <div className="text-xs text-muted-foreground mb-1">{opp.targetDex}</div>
+                    <div className="text-sm font-medium">${opp.targetPrice.toFixed(4)}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Spread: </span>
+                      <span className="text-accent font-medium">{opp.spread.toFixed(2)}%</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Profit: </span>
+                      <span className="text-primary font-semibold">${opp.expectedProfit.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Timer className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">{formatTime(estimatedTime)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleViewDetails(opp)
+                    }}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <Eye className="w-3 h-3 mr-1" />
+                    View Details
+                  </Button>
+                  {opp.status === "active" && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Button
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleExecute(opp.id)
+                            }}
+                            disabled={executingId === opp.id || !wallet.connected}
+                            className="bg-brand hover:bg-brand-dark"
+                          >
+                            {executingId === opp.id ? (
+                              <>
+                                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                Executing...
+                              </>
+                            ) : (
+                              <>
+                                <TrendingUp className="w-3 h-3 mr-1" />
+                                Execute
+                              </>
+                            )}
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {!wallet.connected
+                          ? "Connect wallet to execute"
+                          : executingId === opp.id
+                            ? "Executing trade..."
+                            : `Execute trade with ${opp.expectedProfit.toFixed(2)} profit`}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
+
+      <OpportunityDetailModal
+        opportunity={selectedOpportunity}
+        open={isDetailModalOpen}
+        onOpenChange={setIsDetailModalOpen}
+        onExecute={handleExecute}
+        isExecuting={executingId === selectedOpportunity?.id}
+      />
+    </>
+  )
+
+  if (embedded) {
+    return <div className="w-full">{content}</div>
+  }
+
+  return (
+    <Card className="bg-card-bg border-white/10 p-6">
+      {content}
     </Card>
   )
 }

@@ -12,8 +12,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useStacks } from "@/lib/stacks/StacksProvider"
-import { useStacksNetwork } from "@/lib/stacks/hooks"
+import { useStacks } from "../../lib/stacks/StacksProvider"
+import { useStacksNetwork } from "../../lib/stacks/hooks"
 import { NetworkSwitcher } from "./NetworkSwitcher"
 import { toast } from "sonner"
 

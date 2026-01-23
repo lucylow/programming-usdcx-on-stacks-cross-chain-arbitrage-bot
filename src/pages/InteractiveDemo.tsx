@@ -10,8 +10,10 @@ import { TradeSimulator } from "@/components/TradeSimulator";
 import Navigation from "@/components/layout/Navigation";
 import { 
   Zap, Calculator, Shield, Cable, TrendingUp, Settings,
-  Sparkles
+  Sparkles, BarChart3, BookOpen
 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 
 export default function InteractiveDemoPage() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -96,7 +98,7 @@ export default function InteractiveDemoPage() {
           </Tabs>
 
           {/* Quick Links */}
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
             <div className="bg-card/50 rounded-lg p-6 border border-border hover:border-primary/50 transition-colors">
               <Zap className="w-6 h-6 text-primary mb-3" />
               <h3 className="font-semibold mb-2">Live Trading Demo</h3>
@@ -137,6 +139,37 @@ export default function InteractiveDemoPage() {
               >
                 View Dashboard →
               </button>
+            </div>
+          </div>
+
+          {/* Related Pages */}
+          <div className="mt-8 pt-8 border-t border-border">
+            <h3 className="text-lg font-semibold mb-4">Related Pages</h3>
+            <div className="flex flex-wrap gap-3">
+              <Link to="/bot/dashboard">
+                <Button variant="outline" className="gap-2">
+                  <BarChart3 className="w-4 h-4" />
+                  Bot Dashboard
+                </Button>
+              </Link>
+              <Link to="/analytics">
+                <Button variant="outline" className="gap-2">
+                  <TrendingUp className="w-4 h-4" />
+                  Analytics
+                </Button>
+              </Link>
+              <Link to="/docs">
+                <Button variant="outline" className="gap-2">
+                  <BookOpen className="w-4 h-4" />
+                  Documentation
+                </Button>
+              </Link>
+              <Link to="/resources">
+                <Button variant="outline" className="gap-2">
+                  <BookOpen className="w-4 h-4" />
+                  Resources
+                </Button>
+              </Link>
             </div>
           </div>
         </div>

@@ -19,8 +19,15 @@ import {
   TrendingUp,
   FileText,
   HelpCircle,
+  Gavel,
+  Wallet,
+  ArrowLeftRight,
+  Activity,
+  Settings,
+  Coins,
 } from "lucide-react"
 import { cn } from "../../lib/utils"
+import { StacksWalletButton } from "../../../components/stacks/StacksWalletButton"
 
 interface NavItem {
   label: string
@@ -75,10 +82,53 @@ const navigationItems: NavItem[] = [
     ],
   },
   {
+    label: "Dapp",
+    href: "/portfolio",
+    icon: Wallet,
+    order: 3,
+    children: [
+      {
+        label: "Portfolio",
+        href: "/portfolio",
+        icon: Wallet,
+        description: "View your assets",
+        order: 1,
+      },
+      {
+        label: "Swap",
+        href: "/swap",
+        icon: ArrowLeftRight,
+        description: "Exchange tokens",
+        order: 2,
+      },
+      {
+        label: "Markets",
+        href: "/markets",
+        icon: Coins,
+        description: "Trading pairs",
+        order: 3,
+      },
+      {
+        label: "Activity",
+        href: "/activity",
+        icon: Activity,
+        description: "Transaction history",
+        order: 4,
+      },
+      {
+        label: "Settings",
+        href: "/settings",
+        icon: Settings,
+        description: "Preferences",
+        order: 5,
+      },
+    ],
+  },
+  {
     label: "Analytics",
     href: "/analytics",
     icon: TrendingUp,
-    order: 3,
+    order: 4,
     children: [
       {
         label: "Overview",
@@ -100,7 +150,7 @@ const navigationItems: NavItem[] = [
     label: "Resources",
     href: "/resources",
     icon: BookOpen,
-    order: 4,
+    order: 5,
     children: [
       {
         label: "Interactive Demo",
@@ -124,6 +174,12 @@ const navigationItems: NavItem[] = [
         order: 3,
       },
     ],
+  },
+  {
+    label: "Governance",
+    href: "/governance",
+    icon: Gavel,
+    order: 6,
   },
 ].sort((a, b) => (a.order || 0) - (b.order || 0))
   .map(item => ({
@@ -207,6 +263,10 @@ export default function Navigation() {
                   ⌘K
                 </kbd>
               </motion.button>
+
+              <div className="hidden sm:block">
+                <StacksWalletButton />
+              </div>
 
               <NotificationButton />
 
@@ -524,6 +584,11 @@ function MobileMenu({ isOpen, items, pathname, onClose }: any) {
               >
                 <X className="w-5 h-5" />
               </motion.button>
+            </div>
+
+            {/* Wallet Connection */}
+            <div className="mb-6 pb-6 border-b border-white/10">
+              <StacksWalletButton />
             </div>
 
             {/* Navigation Items */}

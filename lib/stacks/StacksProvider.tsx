@@ -1,8 +1,8 @@
 "use client"
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react"
 import { Connect } from "@stacks/connect-react"
 import { userSession, APP_DETAILS, CONTRACTS } from "./config"
-import { StacksTestnet, StacksMainnet } from "@stacks/network"
+import { STACKS_TESTNET, STACKS_MAINNET, StacksNetwork } from "@stacks/network"
 import { principalCV } from "@stacks/transactions"
 
 export interface WalletInfo {
@@ -33,7 +33,7 @@ interface StacksContextType {
   isSignedIn: boolean
   walletInfo: WalletInfo | null
   network: "testnet" | "mainnet"
-  networkInstance: StacksTestnet | StacksMainnet
+  networkInstance: StacksNetwork
   networkInfo: NetworkInfo
   contracts: typeof CONTRACTS.testnet
   transactions: Transaction[]
@@ -74,13 +74,14 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [error, setError] = useState<Error | null>(null)
 
-  const networkInstance = network === "mainnet" ? new StacksMainnet() : new StacksTestnet()
+  const networkInstance = network === "mainnet" ? STACKS_MAINNET : STACKS_TESTNET
   const contracts = CONTRACTS[network]
+  const apiUrl = network === "mainnet" ? "https://api.stacks.co" : "https://api.testnet.hiro.so"
 
   const networkInfo: NetworkInfo = {
     name: network,
     chainId: network === "mainnet" ? 1 : 2147483648,
-    apiUrl: networkInstance.coreApiUrl,
+    apiUrl,
     explorerUrl: network === "mainnet" ? "https://explorer.stacks.co" : "https://explorer.hiro.so",
   }
 
@@ -102,31 +103,68 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
     setIsSignedIn(true)
   }, [])
 
+  // Balance cache to prevent excessive API calls
+  const balanceCacheRef = useRef<{
+    stxBalance: number
+    usdcxBalance: number
+    timestamp: number
+  } | null>(null)
+  const BALANCE_CACHE_TTL = 10000 // 10 seconds
+
   const refreshBalances = useCallback(async () => {
     if (!walletInfo) return
 
     const address = network === "mainnet" ? walletInfo.mainnetAddress : walletInfo.testnetAddress
     if (!address) return
 
+    // Use cached balance if still valid
+    const now = Date.now()
+    if (balanceCacheRef.current && (now - balanceCacheRef.current.timestamp) < BALANCE_CACHE_TTL) {
+      setWalletInfo((prev) =>
+        prev
+          ? {
+              ...prev,
+              stxBalance: balanceCacheRef.current!.stxBalance,
+              usdcxBalance: balanceCacheRef.current!.usdcxBalance,
+            }
+          : null,
+      )
+      return
+    }
+
     setIsRefreshing(true)
     setError(null)
 
     try {
-      // Fetch STX balance
-      const stxResponse = await fetch(`${networkInstance.coreApiUrl}/extended/v1/address/${address}/stx`)
+      // Fetch STX balance with timeout
+      const stxController = new AbortController()
+      const stxTimeout = setTimeout(() => stxController.abort(), 5000)
+      
+      const stxResponse = await fetch(`${apiUrl}/extended/v1/address/${address}/stx`, {
+        signal: stxController.signal,
+      })
+      clearTimeout(stxTimeout)
+      
       if (!stxResponse.ok) {
         throw new Error(`Failed to fetch STX balance: ${stxResponse.statusText}`)
       }
       const stxData = await stxResponse.json()
       const stxBalance = Number.parseInt(stxData.balance || "0") / 1_000_000
 
-      // Fetch USDCx balance (read-only call)
+      // Fetch USDCx balance (read-only call) with timeout
       let usdcxBalance = 0
       try {
         const principalArg = principalCV(address)
-        const serializedArg = principalArg.serialize().toString("hex")
+        // Serialize using cvToJSON
+        const { cvToJSON } = await import("@stacks/transactions")
+        const json = cvToJSON(principalArg)
+        const serializedArg = Buffer.from(JSON.stringify(json)).toString("hex")
+        
+        const usdcxController = new AbortController()
+        const usdcxTimeout = setTimeout(() => usdcxController.abort(), 5000)
+        
         const usdcxResponse = await fetch(
-          `${networkInstance.coreApiUrl}/v2/contracts/call-read/${contracts.usdcxToken}/usdcx-token/get-balance`,
+          `${apiUrl}/v2/contracts/call-read/${contracts.usdcxToken}/usdcx-token/get-balance`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -134,8 +172,11 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
               sender: address,
               arguments: [`0x${serializedArg}`],
             }),
+            signal: usdcxController.signal,
           },
         )
+        clearTimeout(usdcxTimeout)
+        
         if (usdcxResponse.ok) {
           const usdcxData = await usdcxResponse.json()
           if (usdcxData.okay && usdcxData.result) {
@@ -145,6 +186,17 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
       } catch (err) {
         // USDCx contract may not be deployed or address format issue
         console.warn("USDCx balance fetch failed:", err)
+        // Use cached value if available
+        if (balanceCacheRef.current) {
+          usdcxBalance = balanceCacheRef.current.usdcxBalance
+        }
+      }
+
+      // Update cache
+      balanceCacheRef.current = {
+        stxBalance,
+        usdcxBalance,
+        timestamp: now,
       }
 
       setWalletInfo((prev) =>
@@ -159,11 +211,25 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
       console.error("Error fetching balances:", err)
-      setError(err)
+      
+      // Use cached values on error if available
+      if (balanceCacheRef.current) {
+        setWalletInfo((prev) =>
+          prev
+            ? {
+                ...prev,
+                stxBalance: balanceCacheRef.current!.stxBalance,
+                usdcxBalance: balanceCacheRef.current!.usdcxBalance,
+              }
+            : null,
+        )
+      } else {
+        setError(err)
+      }
     } finally {
       setIsRefreshing(false)
     }
-  }, [walletInfo, network, networkInstance.coreApiUrl, contracts.usdcxToken])
+  }, [walletInfo, network, apiUrl, contracts.usdcxToken])
 
   useEffect(() => {
     // Handle pending sign-in redirect from wallet
@@ -206,7 +272,13 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
       ...tx,
       timestamp: Date.now(),
     }
-    setTransactions((prev) => [newTx, ...prev].slice(0, 100)) // Keep last 100 transactions
+    setTransactions((prev) => {
+      // Avoid duplicates
+      if (prev.some((t) => t.txId === newTx.txId)) {
+        return prev
+      }
+      return [newTx, ...prev].slice(0, 100) // Keep last 100 transactions
+    })
   }, [])
 
   const updateTransaction = useCallback((txId: string, updates: Partial<Transaction>) => {
@@ -237,37 +309,81 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
     },
   }
 
-  // Auto-refresh transaction statuses
+  // Auto-refresh transaction statuses with improved error handling
   useEffect(() => {
     if (transactions.length === 0) return
 
     const pendingTxs = transactions.filter((tx) => tx.status === "pending")
     if (pendingTxs.length === 0) return
 
-    const interval = setInterval(async () => {
+    let isMounted = true
+    const checkInterval = 5000 // 5 seconds
+    let consecutiveErrors = 0
+    const MAX_CONSECUTIVE_ERRORS = 5
+
+    const checkTransactions = async () => {
+      if (!isMounted) return
+
       for (const tx of pendingTxs) {
+        if (!isMounted) break
+        
         try {
-          const response = await fetch(`${networkInstance.coreApiUrl}/extended/v1/tx/${tx.txId}`)
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+          
+          const response = await fetch(`${apiUrl}/extended/v1/tx/${tx.txId}`, {
+            signal: controller.signal,
+          })
+          clearTimeout(timeout)
+          
           if (response.ok) {
+            consecutiveErrors = 0 // Reset error counter on success
             const data = await response.json()
             const status = data.tx_status as Transaction["status"]
             if (status !== "pending") {
               updateTransaction(tx.txId, {
                 status: status === "abort_by_response" || status === "abort_by_post_condition" ? "failed" : status,
                 blockHeight: data.block_height,
-                blockHash: data.block_hash,
                 error: status === "failed" ? data.tx_result?.repr : undefined,
               })
+              
+              // Refresh balances after successful transaction
+              if (status === "success" && walletInfo) {
+                setTimeout(() => refreshBalances(), 2000) // Wait 2s for block confirmation
+              }
+            }
+          } else {
+            consecutiveErrors++
+            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+              console.warn("Too many consecutive errors checking transactions, backing off")
+              // Back off: increase interval
+              return
             }
           }
         } catch (err) {
-          console.error(`Error checking transaction ${tx.txId}:`, err)
+          consecutiveErrors++
+          if (consecutiveErrors < MAX_CONSECUTIVE_ERRORS) {
+            console.error(`Error checking transaction ${tx.txId}:`, err)
+          }
         }
       }
-    }, 5000) // Check every 5 seconds
+    }
 
-    return () => clearInterval(interval)
-  }, [transactions, networkInstance.coreApiUrl, updateTransaction])
+    // Initial check
+    checkTransactions()
+
+    // Set up interval
+    const interval = setInterval(() => {
+      if (isMounted && consecutiveErrors < MAX_CONSECUTIVE_ERRORS) {
+        checkTransactions()
+      }
+    }, checkInterval)
+
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+    }
+  }, [transactions, apiUrl, updateTransaction, walletInfo, refreshBalances])
 
   const contextValue: StacksContextType = {
     isSignedIn,

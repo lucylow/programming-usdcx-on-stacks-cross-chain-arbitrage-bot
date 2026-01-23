@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card"
-import { BookOpen, Code, FileText, Zap, Shield, Wallet } from "lucide-react"
+import { BookOpen, Code, FileText, Zap, Shield, Wallet, HelpCircle, ExternalLink } from "lucide-react"
 import Navigation from "@/components/layout/Navigation"
 import { Link } from "react-router-dom"
 
@@ -66,7 +66,7 @@ export default function Docs() {
           {/* Quick Links */}
           <Card className="bg-card-bg/50 border-white/10 p-6 mt-12">
             <h3 className="text-xl font-semibold mb-4">Quick Links</h3>
-            <div className="grid md:grid-cols-2 gap-4 text-sm">
+            <div className="grid md:grid-cols-2 gap-4 text-sm mb-6">
               <Link to="/docs/getting-started" className="text-accent hover:underline">
                 → Installation Guide
               </Link>
@@ -79,6 +79,23 @@ export default function Docs() {
               <Link to="/docs/security" className="text-accent hover:underline">
                 → Security Audit
               </Link>
+            </div>
+            <div className="pt-4 border-t border-white/10">
+              <h4 className="text-sm font-semibold mb-3 text-muted-foreground">Related Resources</h4>
+              <div className="grid md:grid-cols-2 gap-4 text-sm">
+                <Link to="/faq" className="flex items-center gap-2 text-accent hover:underline">
+                  <HelpCircle className="w-4 h-4" />
+                  Frequently Asked Questions
+                </Link>
+                <Link to="/resources" className="flex items-center gap-2 text-accent hover:underline">
+                  <BookOpen className="w-4 h-4" />
+                  All Resources
+                </Link>
+                <Link to="/demo" className="flex items-center gap-2 text-accent hover:underline">
+                  <Zap className="w-4 h-4" />
+                  Interactive Demo
+                </Link>
+              </div>
             </div>
           </Card>
         </div>

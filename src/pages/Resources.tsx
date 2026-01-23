@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card"
-import { BookOpen, FileText, Code, Video, ExternalLink } from "lucide-react"
+import { BookOpen, FileText, Code, Video, ExternalLink, HelpCircle, Zap } from "lucide-react"
 import Navigation from "@/components/layout/Navigation"
 import { Link } from "react-router-dom"
 
@@ -63,7 +63,7 @@ export default function Resources() {
             arbitrage bot.
           </p>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
             {resources.map((resource, index) => {
               const Content = resource.internal ? (
                 <Link to={resource.href}>
@@ -89,6 +89,25 @@ export default function Resources() {
               return <div key={index}>{Content}</div>
             })}
           </div>
+
+          {/* Additional Quick Links */}
+          <Card className="bg-card-bg/50 border-white/10 p-6">
+            <h3 className="text-xl font-semibold mb-4">Quick Access</h3>
+            <div className="grid md:grid-cols-3 gap-4 text-sm">
+              <Link to="/demo" className="flex items-center gap-2 text-accent hover:underline">
+                <Zap className="w-4 h-4" />
+                Interactive Demo
+              </Link>
+              <Link to="/docs" className="flex items-center gap-2 text-accent hover:underline">
+                <BookOpen className="w-4 h-4" />
+                Documentation
+              </Link>
+              <Link to="/faq" className="flex items-center gap-2 text-accent hover:underline">
+                <HelpCircle className="w-4 h-4" />
+                FAQ
+              </Link>
+            </div>
+          </Card>
         </div>
       </div>
     </div>
