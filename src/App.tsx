@@ -4,6 +4,7 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { SkipToContent } from "./components/ui/accessibility";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Bot from "./pages/Bot";
@@ -17,7 +18,15 @@ import FAQ from "./pages/FAQ";
 import Resources from "./pages/Resources";
 import InteractiveDemoPage from "./pages/InteractiveDemo";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+      staleTime: 30000,
+    },
+  },
+});
 
 // Route transition wrapper
 const AnimatedRoutes = () => {
@@ -54,6 +63,7 @@ const AnimatedRoutes = () => {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
+      <SkipToContent />
       <Toaster />
       <Sonner />
       <BrowserRouter>
