@@ -59,7 +59,14 @@ function getStacksNetwork(): "mainnet" | "testnet" {
   if (network === "mainnet" || network === "testnet") {
     return network
   }
-  return "mainnet"
+  return "testnet" // Default to testnet for safety
+}
+
+// Get default Stacks RPC URL based on network
+function getDefaultStacksRpcUrl(network: "mainnet" | "testnet"): string {
+  return network === "mainnet"
+    ? "https://api.mainnet.hiro.so"
+    : "https://api.testnet.hiro.so"
 }
 
 export const config: BotConfig = {
@@ -75,9 +82,9 @@ export const config: BotConfig = {
   },
 
   stacks: {
-    rpcUrl: getEnvString("STACKS_NODE_URL", "https://api.mainnet.hiro.so"),
-    privateKey: getEnvString("STACKS_PRIVATE_KEY", ""),
     network: getStacksNetwork(),
+    rpcUrl: getEnvString("STACKS_NODE_URL", getDefaultStacksRpcUrl(getStacksNetwork())),
+    privateKey: getEnvString("STACKS_PRIVATE_KEY", ""),
     walletAddress: getEnvString("STACKS_WALLET_ADDRESS", ""),
     apiKey: getEnvString("STACKS_API_KEY"),
   },

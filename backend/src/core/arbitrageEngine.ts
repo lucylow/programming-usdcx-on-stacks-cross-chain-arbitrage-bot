@@ -3,6 +3,7 @@ import { config } from "../config"
 import { logger } from "../utils/logger"
 import { ExecutionError, ValidationError, NetworkError } from "../utils/errors"
 import { retry } from "../utils/retry"
+import { NFTMinter, type TradeStats } from "../nft/nftMinter"
 
 export interface Trade {
   id: string
@@ -19,6 +20,8 @@ export class ArbitrageEngine {
   private trades: Map<string, Trade> = new Map()
   private isRunning = false
   private scanInterval: NodeJS.Timeout | null = null
+  private nftMinter?: NFTMinter
+  private traderStats: Map<string, TradeStats> = new Map()
 
   // Performance metrics
   private metrics = {
@@ -29,8 +32,9 @@ export class ArbitrageEngine {
     totalVolume: 0,
   }
 
-  constructor(priceOracle: PriceOracle) {
+  constructor(priceOracle: PriceOracle, nftMinter?: NFTMinter) {
     this.priceOracle = priceOracle
+    this.nftMinter = nftMinter
   }
 
   async start(): Promise<void> {
@@ -225,6 +229,14 @@ export class ArbitrageEngine {
       this.metrics.totalProfit += trade.profit
 
       logger.info(`Trade ${tradeId} completed successfully. Profit: $${trade.profit.toFixed(2)}`)
+
+      // Check and mint NFT badge if enabled
+      if (this.nftMinter && config.stacks.walletAddress) {
+        this.handleTradeCompletionForNFT(config.stacks.walletAddress, trade.profit).catch((error) => {
+          logger.error("Error handling NFT minting for trade completion:", error)
+        })
+      }
+
       return tradeId
     } catch (error: unknown) {
       trade.status = "failed"
@@ -294,6 +306,36 @@ export class ArbitrageEngine {
 
   getActiveTrades(): Trade[] {
     return Array.from(this.trades.values()).filter((t) => t.status === "executing")
+  }
+
+  /**
+   * Handle trade completion for NFT badge minting
+   */
+  private async handleTradeCompletionForNFT(traderAddress: string, tradeProfit: number): Promise<void> {
+    if (!this.nftMinter) return
+
+    // Get or create trader stats
+    let stats = this.traderStats.get(traderAddress)
+    if (!stats) {
+      stats = {
+        address: traderAddress,
+        totalTrades: 0,
+        totalProfit: 0,
+        lastTradeAt: new Date(),
+      }
+      this.traderStats.set(traderAddress, stats)
+    }
+
+    // Update stats
+    stats.totalTrades += 1
+    stats.totalProfit += tradeProfit
+    stats.lastTradeAt = new Date()
+
+    // Check if user qualifies for a badge
+    const txId = await this.nftMinter.processTradeCompletion(traderAddress, tradeProfit, stats)
+    if (txId) {
+      logger.info(`NFT badge minted for trader ${traderAddress}: ${txId}`)
+    }
   }
 
   getRecentTrades(limit = 20): Trade[] {

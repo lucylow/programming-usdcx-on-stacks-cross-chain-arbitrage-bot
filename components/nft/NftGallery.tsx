@@ -6,15 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useStacks } from "@/lib/stacks/StacksProvider"
 import { CONTRACTS, NFT_CONTRACT_NAME } from "@/lib/stacks/config"
-
-interface NftMetadata {
-  tokenId: number
-  mintedAt: number
-  badgeType: string
-  tradesCompleted: number
-  profitEarned: number
-  uri?: string
-}
+import { nftService, type NFTMetadata } from "@/lib/stacks/nftService"
 
 export function NftGallery() {
   const { isSignedIn, walletInfo, network, networkInstance } = useStacks()
@@ -29,45 +21,28 @@ export function NftGallery() {
 
     setIsLoading(true)
     try {
-      // Fetch total supply
-      const supplyResponse = await fetch(
-        `${networkInstance.coreApiUrl}/v2/contracts/call-read/${contractAddress}/${NFT_CONTRACT_NAME}/get-total-supply`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sender: walletInfo.testnetAddress,
-            arguments: [],
-          }),
-        },
-      )
-      const supplyData = await supplyResponse.json()
-      if (supplyData.okay) {
-        const supply = Number.parseInt(supplyData.result?.value || "0", 16)
-        setTotalSupply(supply)
-      }
+      // Fetch total supply from API
+      const supply = await nftService.getTotalSupply()
+      setTotalSupply(supply)
 
-      // For demo purposes, show placeholder NFTs
-      // In production, you would query each token ID to check ownership
-      const mockNfts: NftMetadata[] = [
-        {
-          tokenId: 1,
-          mintedAt: Date.now() - 86400000,
-          badgeType: "early-adopter",
-          tradesCompleted: 10,
-          profitEarned: 250,
-        },
-        {
-          tokenId: 2,
-          mintedAt: Date.now() - 172800000,
-          badgeType: "whale",
-          tradesCompleted: 100,
-          profitEarned: 5000,
-        },
-      ]
-      setNfts(mockNfts)
+      // Fetch owned NFTs
+      if (walletInfo.testnetAddress) {
+        const ownedNFTs = await nftService.getOwnedNFTs(walletInfo.testnetAddress)
+        setNfts(
+          ownedNFTs.map((nft) => ({
+            tokenId: nft.tokenId,
+            mintedAt: nft.metadata?.mintedAt || Date.now(),
+            badgeType: nft.metadata?.badgeType || "participant",
+            tradesCompleted: nft.metadata?.tradesCompleted || 0,
+            profitEarned: nft.metadata?.profitEarned || 0,
+            uri: nft.uri,
+          })),
+        )
+      }
     } catch (error) {
       console.error("Error fetching NFTs:", error)
+      // Fallback to empty array on error
+      setNfts([])
     } finally {
       setIsLoading(false)
     }

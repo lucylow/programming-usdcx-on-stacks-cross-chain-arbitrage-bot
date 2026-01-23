@@ -58,6 +58,13 @@
     --sidebar-accent-foreground: 240 20% 96%;
     --sidebar-border: 235 30% 18%;
     --sidebar-ring: 245 100% 64%;
+
+    /* Additional colors for Navigation and components */
+    --brand: 245 100% 64%;
+    --accent: 162 100% 42%;
+    --dark: 235 40% 10%;
+    --darker: 235 45% 8%;
+    --error: 0 72% 51%;
   }
 
   .dark {
@@ -78,6 +85,36 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Smooth scrolling for better UX */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Better focus styles for accessibility */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-muted/30;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
   }
 }
 
@@ -110,6 +147,42 @@
 
   .bg-gradient-secondary {
     background: linear-gradient(135deg, hsl(var(--secondary)) 0%, hsl(var(--secondary)) 100%);
+  }
+
+  /* Enhanced card hover effects */
+  .card-interactive {
+    @apply transition-all duration-300 cursor-pointer;
+  }
+
+  .card-interactive:hover {
+    @apply shadow-xl scale-[1.02];
+    transform: translateY(-4px);
+  }
+
+  /* Better button interactions */
+  .btn-interactive {
+    @apply transition-all duration-200;
+  }
+
+  .btn-interactive:hover {
+    @apply shadow-lg;
+    transform: translateY(-1px);
+  }
+
+  .btn-interactive:active {
+    transform: translateY(0);
+  }
+
+  /* Loading shimmer effect */
+  .loading-shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--muted) / 0.5) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
   }
 }
 
@@ -183,4 +256,54 @@
     opacity: 1;
     transform: scale(1);
   }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(
+    to right,
+    hsl(var(--muted)) 0%,
+    hsl(var(--muted) / 0.5) 50%,
+    hsl(var(--muted)) 100%
+  );
+  background-size: 1000px 100%;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.5s ease-out;
 }

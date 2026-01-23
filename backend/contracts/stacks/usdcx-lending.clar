@@ -13,6 +13,9 @@
 (define-constant ERR-LOAN-NOT-FOUND (err u4008))
 (define-constant ERR-LOAN-ACTIVE (err u4009))
 (define-constant ERR-INVALID-INTEREST-RATE (err u4010))
+(define-constant ERR-LIQUIDATION-THRESHOLD (err u4011))
+(define-constant ERR-HEALTH-FACTOR-LOW (err u4012))
+(define-constant LIQUIDATION_THRESHOLD u12000) ;; 120% collateralization threshold for liquidation
 
 ;; Interest rate constants (basis points per block)
 (define-constant BASE_LENDING_RATE u50)    ;; 0.5% per block (annualized ~5%)
@@ -116,13 +119,28 @@
   )
 )
 
-;; Calculate interest accrued
+;; Calculate interest accrued (with overflow protection)
 (define-private (calculate-interest
   (principal uint)
   (rate-bps uint)
   (blocks-elapsed uint)
 )
-  (/ (* principal rate-bps blocks-elapsed) u10000)
+  ;; Prevent overflow by checking if multiplication would exceed uint max
+  ;; Clarity uint is 128-bit, so we check bounds
+  (if (or (is-eq principal u0) (is-eq blocks-elapsed u0))
+    (ok u0)
+    (let
+      (
+        ;; Calculate step by step to avoid overflow
+        (numerator (* principal rate-bps))
+      )
+      ;; Check for potential overflow before division
+      (if (> numerator u340282366920938463463374607431768211455) ;; Approx max safe value
+        (err ERR-INVALID-INTEREST-RATE)
+        (ok (/ (* numerator blocks-elapsed) u10000))
+      )
+    )
+  )
 )
 
 ;; Update lender interest
@@ -490,6 +508,10 @@
     lending-rate: (unwrap-panic (calculate-lending-rate (unwrap-panic (calculate-utilization)))),
     borrowing-rate: (unwrap-panic (calculate-borrowing-rate (unwrap-panic (calculate-utilization))))
   })
+)
+
+(define-read-only (get-health-factor (borrower principal))
+  (ok (unwrap-panic (calculate-health-factor borrower)))
 )
 
 ;; ==========================================

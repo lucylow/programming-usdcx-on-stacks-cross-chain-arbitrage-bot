@@ -102,10 +102,26 @@
     (try! (check-not-paused))
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
     (asserts! (is-some (some recipient)) ERR-INVALID-RECIPIENT)
+    (asserts! (not (is-eq sender recipient)) ERR-INVALID-RECIPIENT) ;; Prevent self-transfers
+    ;; Check balance before transfer
+    (asserts! (>= (ft-get-balance usdcx sender) amount) ERR-INSUFFICIENT-BALANCE)
     (try! (ft-transfer? usdcx amount sender recipient))
     (match memo 
-      m (print { event: "transfer", from: sender, to: recipient, amount: amount, memo: m })
-      (print { event: "transfer", from: sender, to: recipient, amount: amount })
+      m (print { 
+        event: "transfer", 
+        from: sender, 
+        to: recipient, 
+        amount: amount, 
+        memo: m,
+        block-height: block-height
+      })
+      (print { 
+        event: "transfer", 
+        from: sender, 
+        to: recipient, 
+        amount: amount,
+        block-height: block-height
+      })
     )
     (ok true)
   )
@@ -152,9 +168,16 @@
     (asserts! (can-mint-or-burn) ERR-NOT-AUTHORIZED)
     (try! (check-not-paused))
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    (asserts! (is-some (some recipient)) ERR-INVALID-RECIPIENT)
     (try! (check-max-supply amount))
     (try! (ft-mint? usdcx amount recipient))
-    (print { event: "mint", amount: amount, recipient: recipient, total-supply: (ft-get-supply usdcx) })
+    (print { 
+      event: "mint", 
+      amount: amount, 
+      recipient: recipient, 
+      total-supply: (ft-get-supply usdcx),
+      block-height: block-height
+    })
     (ok true)
   )
 )
@@ -164,8 +187,17 @@
     (asserts! (can-mint-or-burn) ERR-NOT-AUTHORIZED)
     (try! (check-not-paused))
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    (asserts! (is-some (some owner)) ERR-INVALID-PRINCIPAL)
+    ;; Check balance before burn
+    (asserts! (>= (ft-get-balance usdcx owner) amount) ERR-INSUFFICIENT-BALANCE)
     (try! (ft-burn? usdcx amount owner))
-    (print { event: "burn", amount: amount, owner: owner, total-supply: (ft-get-supply usdcx) })
+    (print { 
+      event: "burn", 
+      amount: amount, 
+      owner: owner, 
+      total-supply: (ft-get-supply usdcx),
+      block-height: block-height
+    })
     (ok true)
   )
 )
@@ -242,11 +274,29 @@
       (asserts! (> amount u0) ERR-INVALID-AMOUNT)
       (asserts! (>= allowance-amount amount) ERR-INSUFFICIENT-ALLOWANCE)
       (asserts! (is-some (some recipient)) ERR-INVALID-RECIPIENT)
+      (asserts! (not (is-eq sender recipient)) ERR-INVALID-RECIPIENT) ;; Prevent self-transfers
+      ;; Check balance before transfer
+      (asserts! (>= (ft-get-balance usdcx sender) amount) ERR-INSUFFICIENT-BALANCE)
       (try! (ft-transfer? usdcx amount sender recipient))
       (map-set allowances { owner: sender, spender: tx-sender } (- allowance-amount amount))
       (match memo 
-        m (print { event: "transfer-from", spender: tx-sender, from: sender, to: recipient, amount: amount, memo: m })
-        (print { event: "transfer-from", spender: tx-sender, from: sender, to: recipient, amount: amount })
+        m (print { 
+          event: "transfer-from", 
+          spender: tx-sender, 
+          from: sender, 
+          to: recipient, 
+          amount: amount, 
+          memo: m,
+          block-height: block-height
+        })
+        (print { 
+          event: "transfer-from", 
+          spender: tx-sender, 
+          from: sender, 
+          to: recipient, 
+          amount: amount,
+          block-height: block-height
+        })
       )
       (ok true)
     )

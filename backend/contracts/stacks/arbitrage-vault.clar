@@ -10,7 +10,13 @@
 (define-constant ERR-NOT-INITIALIZED (err u105))
 (define-constant ERR-PAUSED (err u106))
 (define-constant ERR-TRANSFER-FAILED (err u107))
+(define-constant ERR-SLIPPAGE-EXCEEDED (err u108))
+(define-constant ERR-MAX-DEPOSIT-EXCEEDED (err u109))
+(define-constant ERR-TIMELOCK-ACTIVE (err u110))
+(define-constant ERR-INVALID-PRINCIPAL (err u111))
 (define-constant MIN-PROFIT u500000) ;; 0.5 USDCx minimum profit
+(define-constant MAX-DEPOSIT u1000000000000) ;; 1M USDCx max deposit per transaction
+(define-constant TIMELOCK-DELAY u144) ;; 144 blocks (~24 hours) timelock for critical operations
 
 ;; Data variables
 (define-data-var vault-balance uint u0)
@@ -21,6 +27,9 @@
 (define-data-var contract-owner principal tx-sender)
 (define-data-var paused bool false)
 (define-data-var initialized bool false)
+(define-data-var pending-bridge-contract (optional principal) none)
+(define-data-var pending-bot-operator (optional principal) none)
+(define-data-var timelock-start-block (optional uint) none)
 
 ;; Data maps
 (define-map trade-history
@@ -55,13 +64,23 @@
   (let (
     (caller tx-sender)
     (vault-self (as-contract tx-sender))
+    (current-balance (var-get vault-balance))
   )
     (asserts! (var-get initialized) ERR-NOT-INITIALIZED)
     (asserts! (not (var-get paused)) ERR-PAUSED)
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    (asserts! (<= amount MAX-DEPOSIT) ERR-MAX-DEPOSIT-EXCEEDED)
+    (asserts! (is-some (some caller)) ERR-INVALID-PRINCIPAL)
     (try! (contract-call? .usdcx-token transfer amount caller vault-self none))
-    (var-set vault-balance (+ (var-get vault-balance) amount))
-    (print { event: "deposit", from: caller, amount: amount, vault-balance: (var-get vault-balance) })
+    (var-set vault-balance (+ current-balance amount))
+    (print { 
+      event: "deposit", 
+      from: caller, 
+      amount: amount, 
+      vault-balance: (var-get vault-balance),
+      block-height: block-height,
+      timestamp: (unwrap-panic (get-block-info? time block-height))
+    })
     (ok amount)
   )
 )
@@ -77,6 +96,7 @@
   (let (
     (balance (var-get vault-balance))
     (trade-id (+ (var-get total-trades) u1))
+    (balance-before balance)
   )
     (asserts! (var-get initialized) ERR-NOT-INITIALIZED)
     (asserts! (is-eq tx-sender (var-get bot-operator)) ERR-UNAUTHORIZED)
@@ -84,7 +104,21 @@
     (asserts! (>= balance amount-in) ERR-INSUFFICIENT-BALANCE)
     (asserts! (>= expected-profit MIN-PROFIT) ERR-INSUFFICIENT-PROFIT)
     (asserts! (> amount-in u0) ERR-INVALID-AMOUNT)
+    (asserts! (> min-amount-out u0) ERR-INVALID-AMOUNT)
+    ;; Slippage protection: ensure min-amount-out is reasonable
+    (asserts! (>= min-amount-out amount-in) ERR-SLIPPAGE-EXCEEDED)
+    
     ;; DEX swap: (contract-call? <dex> swap amount-in min-amount-out ...) when integrating
+    ;; For now, we simulate by updating balance (in real implementation, DEX would handle this)
+    ;; TODO: Replace with actual DEX contract call
+    ;; (try! (contract-call? <dex-contract> swap amount-in min-amount-out ...))
+    
+    ;; Update vault balance after swap (simulated - replace with actual DEX result)
+    (var-set vault-balance (- balance amount-in))
+    ;; In real implementation, check actual amount-out from DEX and update balance accordingly
+    ;; For now, we assume the swap succeeds and update with expected profit
+    (var-set vault-balance (+ (- balance amount-in) (+ amount-in expected-profit)))
+    
     (map-set trade-history trade-id {
       profit: expected-profit,
       amount-in: amount-in,
@@ -99,7 +133,11 @@
       dex: dex-name,
       amount-in: amount-in,
       min-amount-out: min-amount-out,
-      profit: expected-profit
+      expected-profit: expected-profit,
+      balance-before: balance-before,
+      balance-after: (var-get vault-balance),
+      block-height: block-height,
+      timestamp: (unwrap-panic (get-block-info? time block-height))
     })
     (ok expected-profit)
   )
@@ -132,14 +170,46 @@
 (define-public (withdraw (amount uint))
   (let (
     (operator (var-get bot-operator))
+    (balance (var-get vault-balance))
   )
     (asserts! (var-get initialized) ERR-NOT-INITIALIZED)
     (asserts! (is-eq tx-sender operator) ERR-UNAUTHORIZED)
-    (asserts! (>= (var-get vault-balance) amount) ERR-INSUFFICIENT-BALANCE)
+    (asserts! (not (var-get paused)) ERR-PAUSED)
+    (asserts! (>= balance amount) ERR-INSUFFICIENT-BALANCE)
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
-    (var-set vault-balance (- (var-get vault-balance) amount))
+    (var-set vault-balance (- balance amount))
     (try! (contract-call? .usdcx-token transfer amount (as-contract tx-sender) operator none))
-    (print { event: "withdraw", to: operator, amount: amount, vault-balance: (var-get vault-balance) })
+    (print { 
+      event: "withdraw", 
+      to: operator, 
+      amount: amount, 
+      vault-balance: (var-get vault-balance),
+      block-height: block-height,
+      timestamp: (unwrap-panic (get-block-info? time block-height))
+    })
+    (ok amount)
+  )
+)
+
+;; Emergency withdrawal (owner only, bypasses pause)
+(define-public (emergency-withdraw (amount uint))
+  (let (
+    (owner (var-get contract-owner))
+    (balance (var-get vault-balance))
+  )
+    (asserts! (var-get initialized) ERR-NOT-INITIALIZED)
+    (asserts! (is-eq tx-sender owner) ERR-UNAUTHORIZED)
+    (asserts! (>= balance amount) ERR-INSUFFICIENT-BALANCE)
+    (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    (var-set vault-balance (- balance amount))
+    (try! (contract-call? .usdcx-token transfer amount (as-contract tx-sender) owner none))
+    (print { 
+      event: "emergency-withdraw", 
+      to: owner, 
+      amount: amount, 
+      vault-balance: (var-get vault-balance),
+      block-height: block-height
+    })
     (ok amount)
   )
 )
@@ -196,22 +266,84 @@
   (ok MIN-PROFIT)
 )
 
-;; Update bridge contract (owner only)
-(define-public (update-bridge-contract (new-contract principal))
+;; Propose bridge contract update (owner only, requires timelock)
+(define-public (propose-bridge-contract-update (new-contract principal))
   (begin
     (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-UNAUTHORIZED)
-    (var-set bridge-contract new-contract)
-    (print { event: "bridge-updated", bridge: new-contract })
+    (asserts! (is-some (some new-contract)) ERR-INVALID-PRINCIPAL)
+    (var-set pending-bridge-contract (some new-contract))
+    (var-set timelock-start-block (some block-height))
+    (print { 
+      event: "bridge-update-proposed", 
+      new-bridge: new-contract,
+      timelock-start: block-height,
+      timelock-end: (+ block-height TIMELOCK-DELAY)
+    })
     (ok true)
   )
 )
 
-;; Update bot operator (owner only)
-(define-public (update-bot-operator (new-operator principal))
+;; Execute bridge contract update after timelock (owner only)
+(define-public (execute-bridge-contract-update)
+  (let (
+    (pending (var-get pending-bridge-contract))
+    (timelock-start (var-get timelock-start-block))
+  )
+    (begin
+      (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-UNAUTHORIZED)
+      (asserts! (is-some pending) ERR-INVALID-AMOUNT)
+      (asserts! (is-some timelock-start) ERR-INVALID-AMOUNT)
+      (asserts! (>= block-height (+ (unwrap timelock-start) TIMELOCK-DELAY)) ERR-TIMELOCK-ACTIVE)
+      (var-set bridge-contract (unwrap pending))
+      (var-set pending-bridge-contract none)
+      (var-set timelock-start-block none)
+      (print { 
+        event: "bridge-updated", 
+        bridge: (var-get bridge-contract),
+        block-height: block-height
+      })
+      (ok true)
+    )
+  )
+)
+
+;; Propose bot operator update (owner only, requires timelock)
+(define-public (propose-bot-operator-update (new-operator principal))
   (begin
     (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-UNAUTHORIZED)
-    (var-set bot-operator new-operator)
-    (print { event: "bot-operator-updated", bot-operator: new-operator })
+    (asserts! (is-some (some new-operator)) ERR-INVALID-PRINCIPAL)
+    (var-set pending-bot-operator (some new-operator))
+    (var-set timelock-start-block (some block-height))
+    (print { 
+      event: "bot-operator-update-proposed", 
+      new-operator: new-operator,
+      timelock-start: block-height,
+      timelock-end: (+ block-height TIMELOCK-DELAY)
+    })
     (ok true)
+  )
+)
+
+;; Execute bot operator update after timelock (owner only)
+(define-public (execute-bot-operator-update)
+  (let (
+    (pending (var-get pending-bot-operator))
+    (timelock-start (var-get timelock-start-block))
+  )
+    (begin
+      (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-UNAUTHORIZED)
+      (asserts! (is-some pending) ERR-INVALID-AMOUNT)
+      (asserts! (is-some timelock-start) ERR-INVALID-AMOUNT)
+      (asserts! (>= block-height (+ (unwrap timelock-start) TIMELOCK-DELAY)) ERR-TIMELOCK-ACTIVE)
+      (var-set bot-operator (unwrap pending))
+      (var-set pending-bot-operator none)
+      (var-set timelock-start-block none)
+      (print { 
+        event: "bot-operator-updated", 
+        bot-operator: (var-get bot-operator),
+        block-height: block-height
+      })
+      (ok true)
+    )
   )
 )

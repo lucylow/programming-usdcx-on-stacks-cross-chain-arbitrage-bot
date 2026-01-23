@@ -11,6 +11,10 @@
 (define-constant ERR-WITHDRAWAL-NOT-FOUND (err u2005))
 (define-constant ERR-WITHDRAWAL-ALREADY-PROCESSED (err u2006))
 (define-constant ERR-INVALID-REQUEST-ID (err u2007))
+(define-constant ERR-RATE-LIMIT-EXCEEDED (err u2008))
+(define-constant ERR-INVALID-PRINCIPAL (err u2009))
+(define-constant MAX-DAILY-WITHDRAWALS u100) ;; Max withdrawals per day per address
+(define-constant MAX-DAILY-AMOUNT u100000000000) ;; Max 100k USDCx per day per address
 
 (define-map processed-attestations
   { attestation-hash: (buff 32) }
@@ -31,6 +35,12 @@
 )
 
 (define-map relayers principal bool)
+
+;; Rate limiting: track daily withdrawals per address
+(define-map daily-withdrawals
+  { address: principal, day: uint }
+  { count: uint, amount: uint }
+)
 
 (define-data-var request-nonce uint u0)
 (define-data-var bridge-admin principal tx-sender)
@@ -89,6 +99,52 @@
   )
 )
 
+;; Helper: Get current day (blocks per day ~144, assuming 10 min blocks)
+(define-private (get-current-day)
+  (/ block-height u144)
+)
+
+;; Helper: Check rate limits
+(define-private (check-rate-limit (requester principal) (amount uint))
+  (let
+    (
+      (current-day (get-current-day))
+      (daily-stats (map-get? daily-withdrawals { address: requester, day: current-day }))
+    )
+    (match daily-stats
+      stats (begin
+        (asserts! (< (get count stats) MAX-DAILY-WITHDRAWALS) ERR-RATE-LIMIT-EXCEEDED)
+        (asserts! (<= (+ (get amount stats) amount) MAX-DAILY-AMOUNT) ERR-RATE-LIMIT-EXCEEDED)
+        (ok true)
+      )
+      (ok true)
+    )
+  )
+)
+
+;; Helper: Update rate limit tracking
+(define-private (update-rate-limit (requester principal) (amount uint))
+  (let
+    (
+      (current-day (get-current-day))
+      (daily-stats (map-get? daily-withdrawals { address: requester, day: current-day }))
+    )
+    (match daily-stats
+      stats (map-set daily-withdrawals
+        { address: requester, day: current-day }
+        {
+          count: (+ (get count stats) u1),
+          amount: (+ (get amount stats) amount)
+        }
+      )
+      (map-set daily-withdrawals
+        { address: requester, day: current-day }
+        { count: u1, amount: amount }
+      )
+    )
+  )
+)
+
 ;; Burn USDCx → Withdraw USDC (caller burns own balance; requester recorded for relayer)
 (define-public (burn-and-withdraw
   (amount uint)
@@ -105,8 +161,11 @@
     )
 
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    (asserts! (is-some (some tx-sender)) ERR-INVALID-PRINCIPAL)
+    (try! (check-rate-limit tx-sender amount))
 
     (try! (contract-call? .usdcx-token protocol-burn amount tx-sender))
+    (update-rate-limit tx-sender amount)
 
     (map-set withdrawal-requests
       { request-id: request-id }
@@ -129,7 +188,8 @@
       amount: amount,
       requester: tx-sender,
       ethereum-recipient: ethereum-recipient,
-      withdrawal-hash: withdrawal-hash
+      withdrawal-hash: withdrawal-hash,
+      block-height: block-height
     })
 
     (ok request-id)
@@ -155,8 +215,12 @@
 
     (asserts! (is-eq contract-caller owner) ERR-NOT-AUTHORIZED)
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    (asserts! (is-some (some owner)) ERR-INVALID-PRINCIPAL)
+    ;; Rate limiting for contract withdrawals (use owner as key)
+    (try! (check-rate-limit owner amount))
 
     (try! (contract-call? .usdcx-token protocol-burn amount owner))
+    (update-rate-limit owner amount)
 
     (map-set withdrawal-requests
       { request-id: request-id }
@@ -180,7 +244,8 @@
       owner: owner,
       requester: tx-sender,
       ethereum-recipient: ethereum-recipient,
-      withdrawal-hash: withdrawal-hash
+      withdrawal-hash: withdrawal-hash,
+      block-height: block-height
     })
 
     (ok request-id)

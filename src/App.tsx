@@ -17,6 +17,7 @@ import Docs from "./pages/Docs";
 import FAQ from "./pages/FAQ";
 import Resources from "./pages/Resources";
 import InteractiveDemoPage from "./pages/InteractiveDemo";
+import GovernancePage from "./pages/Governance";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,6 +51,7 @@ const AnimatedRoutes = () => {
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/analytics/risk" element={<AnalyticsRisk />} />
           <Route path="/demo" element={<InteractiveDemoPage />} />
+          <Route path="/governance" element={<GovernancePage />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/resources" element={<Resources />} />

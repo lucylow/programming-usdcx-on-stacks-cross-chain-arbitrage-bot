@@ -11,6 +11,8 @@
 (define-constant ERR-STAKE-LOCKED (err u3006))
 (define-constant ERR-INVALID-PERIOD (err u3007))
 (define-constant ERR-INSUFFICIENT-REWARDS (err u3008))
+(define-constant ERR-EARLY-UNSTAKE-PENALTY (err u3009))
+(define-constant EARLY-UNSTAKE-PENALTY-BPS u1000) ;; 10% penalty for early unstake
 
 ;; Staking period types (in blocks, ~10 minutes per block)
 (define-constant PERIOD-30-DAYS u4320)    ;; ~30 days
@@ -111,13 +113,23 @@
     (
       (blocks-staked (- current-block start-block))
       (blocks-in-period period-blocks)
-      (rewards-per-block (/ (* amount apy-bps) (* blocks-in-period u10000)))
     )
-    (if (>= blocks-staked blocks-in-period)
-      ;; Full period completed, calculate full rewards
-      (/ (* amount apy-bps) u10000)
-      ;; Partial period, calculate proportional rewards
-      (* rewards-per-block blocks-staked)
+    (if (or (is-eq amount u0) (is-eq blocks-in-period u0))
+      (ok u0)
+      (let
+        (
+          (rewards-numerator (* amount apy-bps))
+        )
+        (if (>= blocks-staked blocks-in-period)
+          ;; Full period completed, calculate full rewards
+          (ok (/ rewards-numerator u10000))
+          ;; Partial period, calculate proportional rewards (with overflow check)
+          (if (> rewards-numerator u340282366920938463463374607431768211455)
+            (err ERR-INSUFFICIENT-REWARDS)
+            (ok (/ (* rewards-numerator blocks-staked) (* blocks-in-period u10000)))
+          )
+        )
+      )
     )
   )
 )
@@ -178,7 +190,7 @@
   )
 )
 
-;; Unstake USDCx tokens (only after lock period)
+;; Unstake USDCx tokens (with early unstake penalty if before lock period)
 (define-public (unstake (stake-id uint))
   (let
     (
@@ -189,27 +201,39 @@
       (period-blocks (get period-blocks stake-data))
       (current-block block-height)
       (blocks-elapsed (- current-block start-block))
+      (is-early (< blocks-elapsed period-blocks))
     )
     (begin
       (try! (check-not-paused))
       (asserts! (get active stake-data) ERR-STAKE-NOT-FOUND)
-      (asserts! (>= blocks-elapsed period-blocks) ERR-STAKE-LOCKED)
       
       ;; Calculate and claim final rewards
       (let
         (
           (apy-bps (get apy-bps stake-data))
-          (total-rewards (calculate-rewards amount start-block period-blocks apy-bps current-block))
+          (total-rewards-result (try! (calculate-rewards amount start-block period-blocks apy-bps current-block)))
+          (total-rewards (unwrap total-rewards-result))
           (unclaimed-rewards (- total-rewards (get claimed-rewards stake-data)))
+          (penalty-amount (if is-early (/ (* amount EARLY-UNSTAKE-PENALTY-BPS) u10000) u0))
+          (return-amount (- amount penalty-amount))
         )
         (begin
-          ;; Claim any remaining rewards
-          (if (> unclaimed-rewards u0)
+          ;; Apply early unstake penalty
+          (if is-early
+            (begin
+              ;; Burn penalty amount
+              (try! (contract-call? .usdcx-token protocol-burn penalty-amount (as-contract tx-sender)))
+              (print { event: "early-unstake-penalty", staker: staker, stake-id: stake-id, penalty: penalty-amount })
+            )
+          )
+          
+          ;; Claim any remaining rewards (only if not early unstake)
+          (if (and (not is-early) (> unclaimed-rewards u0))
             (try! (contract-call? .usdcx-token protocol-mint unclaimed-rewards staker))
           )
           
-          ;; Return staked amount
-          (try! (contract-call? .usdcx-token transfer amount (as-contract tx-sender) staker none))
+          ;; Return staked amount (minus penalty if early)
+          (try! (contract-call? .usdcx-token transfer return-amount (as-contract tx-sender) staker none))
           
           ;; Mark stake as inactive
           (map-set stakes
@@ -219,20 +243,24 @@
               start-block: start-block,
               period-blocks: period-blocks,
               apy-bps: apy-bps,
-              claimed-rewards: total-rewards,
+              claimed-rewards: (if is-early (get claimed-rewards stake-data) total-rewards),
               active: false
             }
           )
           
           (var-set total-staked (- (var-get total-staked) amount))
-          (var-set total-rewards-distributed (+ (var-get total-rewards-distributed) unclaimed-rewards))
+          (if (not is-early)
+            (var-set total-rewards-distributed (+ (var-get total-rewards-distributed) unclaimed-rewards))
+          )
           
           (print {
             event: "unstake",
             staker: staker,
             stake-id: stake-id,
-            amount: amount,
-            rewards: unclaimed-rewards
+            amount: return-amount,
+            rewards: (if is-early u0 unclaimed-rewards),
+            early-unstake: is-early,
+            penalty: penalty-amount
           })
           
           (ok true)
@@ -316,18 +344,23 @@
   (staker principal)
   (stake-id uint)
 )
-  (let
-    (
-      (stake-data (unwrap-panic (map-get? stakes { staker: staker, stake-id: stake-id })))
-      (amount (get amount stake-data))
-      (start-block (get start-block stake-data))
-      (period-blocks (get period-blocks stake-data))
-      (apy-bps (get apy-bps stake-data))
-      (current-block block-height)
-      (total-rewards (calculate-rewards amount start-block period-blocks apy-bps current-block))
-      (claimed-rewards (get claimed-rewards stake-data))
+  (match (map-get? stakes { staker: staker, stake-id: stake-id })
+    stake-data (let
+      (
+        (amount (get amount stake-data))
+        (start-block (get start-block stake-data))
+        (period-blocks (get period-blocks stake-data))
+        (apy-bps (get apy-bps stake-data))
+        (current-block block-height)
+        (total-rewards-result (calculate-rewards amount start-block period-blocks apy-bps current-block))
+        (claimed-rewards (get claimed-rewards stake-data))
+      )
+      (match total-rewards-result
+        total-rewards (ok (- total-rewards claimed-rewards))
+        (ok u0)
+      )
     )
-    (ok (- total-rewards claimed-rewards))
+    (ok u0)
   )
 )
 

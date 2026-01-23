@@ -13,6 +13,10 @@ import {
 } from "./web3"
 import { ethers } from "ethers"
 import { errorHandler, asyncHandler, successResponse } from "./middleware/errorHandler"
+import { NFTService } from "./nft/nftService"
+import { NFTMinter } from "./nft/nftMinter"
+import { StacksClient } from "./blockchain/stacksClient"
+import { DaoGovernanceService, VoteSupport, ProposalState } from "./blockchain/daoGovernance"
 import {
   ValidationError,
   ConfigurationError,
@@ -56,6 +60,42 @@ const multiChainService = new MultiChainService(
   priceFeedAggregator,
   tokenMetadataService,
 )
+
+// Initialize NFT Service
+const nftContractAddress = process.env.NFT_CONTRACT_ADDRESS || "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"
+const marketplaceAddress = process.env.NFT_MARKETPLACE_ADDRESS
+const nftService = new NFTService(
+  config.stacks.network,
+  nftContractAddress,
+  "privacy-badge-nft",
+  marketplaceAddress,
+  "nft-marketplace",
+)
+
+// Initialize DAO Governance Service
+const daoContractAddress = process.env.DAO_CONTRACT_ADDRESS || "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"
+const governanceTokenAddress = process.env.GOVERNANCE_TOKEN_ADDRESS || daoContractAddress
+let daoGovernanceService: DaoGovernanceService | null = null
+
+if (config.stacks.privateKey) {
+  try {
+    const stacksClient = new StacksClient({
+      network: config.stacks.network,
+      privateKey: config.stacks.privateKey,
+      rpcUrl: config.stacks.rpcUrl,
+    })
+    daoGovernanceService = new DaoGovernanceService(
+      stacksClient,
+      daoContractAddress,
+      "dao-governance",
+      governanceTokenAddress,
+      "governance-token",
+    )
+    logger.info("DAO Governance Service initialized")
+  } catch (error) {
+    logger.warn("Failed to initialize DAO Governance Service:", error)
+  }
+}
 
 const app = express()
 
@@ -432,6 +472,286 @@ app.get("/api/web3/multi-chain/balance", asyncHandler(async (req: Request, res: 
     )
     successResponse(Object.fromEntries(balances), res)
   }
+}))
+
+// ==================== NFT Endpoints ====================
+
+app.get("/api/nft/supply", asyncHandler(async (req: Request, res: Response) => {
+  const totalSupply = await nftService.getTotalSupply()
+  successResponse({ totalSupply }, res)
+}))
+
+app.get("/api/nft/last-token-id", asyncHandler(async (req: Request, res: Response) => {
+  const lastTokenId = await nftService.getLastTokenId()
+  successResponse({ lastTokenId }, res)
+}))
+
+app.get("/api/nft/token/:tokenId", asyncHandler(async (req: Request, res: Response) => {
+  const tokenId = Number.parseInt(req.params.tokenId)
+  if (isNaN(tokenId) || tokenId < 1) {
+    return res.status(400).json({ error: "Invalid token ID" })
+  }
+
+  const [owner, uri, metadata] = await Promise.all([
+    nftService.getOwner(tokenId),
+    nftService.getTokenUri(tokenId),
+    nftService.getTokenMetadata(tokenId),
+  ])
+
+  successResponse(
+    {
+      tokenId,
+      owner,
+      uri,
+      metadata: metadata?.metadata,
+    },
+    res,
+  )
+}))
+
+app.get("/api/nft/owner/:address", asyncHandler(async (req: Request, res: Response) => {
+  const address = req.params.address
+  if (!address || !address.startsWith("SP")) {
+    return res.status(400).json({ error: "Invalid Stacks address" })
+  }
+
+  const nfts = await nftService.getOwnedNFTs(address)
+  successResponse({ address, nfts, count: nfts.length }, res)
+}))
+
+app.get("/api/nft/claimed/:address", asyncHandler(async (req: Request, res: Response) => {
+  const address = req.params.address
+  if (!address || !address.startsWith("SP")) {
+    return res.status(400).json({ error: "Invalid Stacks address" })
+  }
+
+  const hasClaimed = await nftService.hasUserClaimed(address)
+  successResponse({ address, hasClaimed }, res)
+}))
+
+app.get("/api/nft/marketplace/listings", asyncHandler(async (req: Request, res: Response) => {
+  const totalListings = await nftService.getTotalListings()
+  successResponse({ totalListings }, res)
+}))
+
+app.get("/api/nft/marketplace/listings/:listingId", asyncHandler(async (req: Request, res: Response) => {
+  const listingId = Number.parseInt(req.params.listingId)
+  if (isNaN(listingId) || listingId < 1) {
+    return res.status(400).json({ error: "Invalid listing ID" })
+  }
+
+  const listing = await nftService.getListing(listingId)
+  if (!listing) {
+    return res.status(404).json({ error: "Listing not found" })
+  }
+
+  successResponse(listing, res)
+}))
+
+app.get("/api/nft/marketplace/auctions", asyncHandler(async (req: Request, res: Response) => {
+  const totalAuctions = await nftService.getTotalAuctions()
+  successResponse({ totalAuctions }, res)
+}))
+
+// ================ DAO GOVERNANCE API ENDPOINTS ================
+
+app.get("/api/dao/proposals", asyncHandler(async (req: Request, res: Response) => {
+  if (!daoGovernanceService) {
+    return res.status(503).json({ error: "DAO Governance Service not available" })
+  }
+
+  const limit = Number.parseInt(req.query.limit as string) || 50
+  const proposals = await daoGovernanceService.getAllProposals(limit)
+  successResponse({ proposals, count: proposals.length }, res)
+}))
+
+app.get("/api/dao/proposals/:id", asyncHandler(async (req: Request, res: Response) => {
+  if (!daoGovernanceService) {
+    return res.status(503).json({ error: "DAO Governance Service not available" })
+  }
+
+  const proposalId = Number.parseInt(req.params.id)
+  if (isNaN(proposalId) || proposalId < 1) {
+    return res.status(400).json({ error: "Invalid proposal ID" })
+  }
+
+  const proposal = await daoGovernanceService.getProposal(proposalId)
+  if (!proposal) {
+    return res.status(404).json({ error: "Proposal not found" })
+  }
+
+  successResponse(proposal, res)
+}))
+
+app.post("/api/dao/proposals", asyncHandler(async (req: Request, res: Response) => {
+  if (!daoGovernanceService) {
+    return res.status(503).json({ error: "DAO Governance Service not available" })
+  }
+
+  const { title, description, targetContract, functionName, calldata } = req.body
+
+  if (!title || !description || !targetContract || !functionName) {
+    return res.status(400).json({ error: "Missing required fields" })
+  }
+
+  const txId = await daoGovernanceService.createProposal(
+    title,
+    description,
+    targetContract,
+    functionName,
+    calldata || [],
+  )
+
+  successResponse({ txId, message: "Proposal created successfully" }, res)
+}))
+
+app.post("/api/dao/proposals/:id/activate", asyncHandler(async (req: Request, res: Response) => {
+  if (!daoGovernanceService) {
+    return res.status(503).json({ error: "DAO Governance Service not available" })
+  }
+
+  const proposalId = Number.parseInt(req.params.id)
+  if (isNaN(proposalId) || proposalId < 1) {
+    return res.status(400).json({ error: "Invalid proposal ID" })
+  }
+
+  const txId = await daoGovernanceService.activateProposal(proposalId)
+  successResponse({ txId, message: "Proposal activated successfully" }, res)
+}))
+
+app.post("/api/dao/proposals/:id/vote", asyncHandler(async (req: Request, res: Response) => {
+  if (!daoGovernanceService) {
+    return res.status(503).json({ error: "DAO Governance Service not available" })
+  }
+
+  const proposalId = Number.parseInt(req.params.id)
+  if (isNaN(proposalId) || proposalId < 1) {
+    return res.status(400).json({ error: "Invalid proposal ID" })
+  }
+
+  const { support, votingPower } = req.body
+
+  if (support === undefined || !votingPower) {
+    return res.status(400).json({ error: "Missing support or votingPower" })
+  }
+
+  const txId = await daoGovernanceService.voteOnProposal(
+    proposalId,
+    support as VoteSupport,
+    votingPower,
+  )
+
+  successResponse({ txId, message: "Vote submitted successfully" }, res)
+}))
+
+app.post("/api/dao/proposals/:id/execute", asyncHandler(async (req: Request, res: Response) => {
+  if (!daoGovernanceService) {
+    return res.status(503).json({ error: "DAO Governance Service not available" })
+  }
+
+  const proposalId = Number.parseInt(req.params.id)
+  if (isNaN(proposalId) || proposalId < 1) {
+    return res.status(400).json({ error: "Invalid proposal ID" })
+  }
+
+  const txId = await daoGovernanceService.executeProposal(proposalId)
+  successResponse({ txId, message: "Proposal executed successfully" }, res)
+}))
+
+app.get("/api/dao/proposals/:id/vote/:voter", asyncHandler(async (req: Request, res: Response) => {
+  if (!daoGovernanceService) {
+    return res.status(503).json({ error: "DAO Governance Service not available" })
+  }
+
+  const proposalId = Number.parseInt(req.params.id)
+  const voter = req.params.voter
+
+  if (isNaN(proposalId) || proposalId < 1) {
+    return res.status(400).json({ error: "Invalid proposal ID" })
+  }
+
+  if (!voter || !voter.startsWith("SP") && !voter.startsWith("ST")) {
+    return res.status(400).json({ error: "Invalid voter address" })
+  }
+
+  const vote = await daoGovernanceService.getVote(proposalId, voter)
+  if (!vote) {
+    return res.status(404).json({ error: "Vote not found" })
+  }
+
+  successResponse(vote, res)
+}))
+
+app.get("/api/dao/proposals/:id/has-voted/:voter", asyncHandler(async (req: Request, res: Response) => {
+  if (!daoGovernanceService) {
+    return res.status(503).json({ error: "DAO Governance Service not available" })
+  }
+
+  const proposalId = Number.parseInt(req.params.id)
+  const voter = req.params.voter
+
+  if (isNaN(proposalId) || proposalId < 1) {
+    return res.status(400).json({ error: "Invalid proposal ID" })
+  }
+
+  if (!voter || !voter.startsWith("SP") && !voter.startsWith("ST")) {
+    return res.status(400).json({ error: "Invalid voter address" })
+  }
+
+  const hasVoted = await daoGovernanceService.hasVoted(proposalId, voter)
+  successResponse({ hasVoted }, res)
+}))
+
+app.get("/api/dao/treasury", asyncHandler(async (req: Request, res: Response) => {
+  if (!daoGovernanceService) {
+    return res.status(503).json({ error: "DAO Governance Service not available" })
+  }
+
+  const balance = await daoGovernanceService.getTreasuryBalance()
+  successResponse({ balance }, res)
+}))
+
+app.get("/api/dao/token/:address", asyncHandler(async (req: Request, res: Response) => {
+  if (!daoGovernanceService) {
+    return res.status(503).json({ error: "DAO Governance Service not available" })
+  }
+
+  const address = req.params.address
+  if (!address || (!address.startsWith("SP") && !address.startsWith("ST"))) {
+    return res.status(400).json({ error: "Invalid address" })
+  }
+
+  const tokenInfo = await daoGovernanceService.getGovernanceTokenInfo(address)
+  successResponse(tokenInfo, res)
+}))
+
+app.post("/api/dao/delegate", asyncHandler(async (req: Request, res: Response) => {
+  if (!daoGovernanceService) {
+    return res.status(503).json({ error: "DAO Governance Service not available" })
+  }
+
+  const { delegatee } = req.body
+
+  if (!delegatee || (!delegatee.startsWith("SP") && !delegatee.startsWith("ST"))) {
+    return res.status(400).json({ error: "Invalid delegatee address" })
+  }
+
+  const txId = await daoGovernanceService.delegateVotes(delegatee)
+  successResponse({ txId, message: "Votes delegated successfully" }, res)
+}))
+
+app.get("/api/nft/marketplace/auctions/:auctionId", asyncHandler(async (req: Request, res: Response) => {
+  const auctionId = Number.parseInt(req.params.auctionId)
+  if (isNaN(auctionId) || auctionId < 1) {
+    return res.status(400).json({ error: "Invalid auction ID" })
+  }
+
+  const auction = await nftService.getAuction(auctionId)
+  if (!auction) {
+    return res.status(404).json({ error: "Auction not found" })
+  }
+
+  successResponse(auction, res)
 }))
 
 async function startBot() {
