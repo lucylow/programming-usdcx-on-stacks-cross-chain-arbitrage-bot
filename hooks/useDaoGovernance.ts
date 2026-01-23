@@ -1,19 +1,19 @@
 import { useState, useEffect, useCallback } from "react"
-import { useStacks } from "@/lib/stacks/StacksProvider"
-import { CONTRACTS } from "@/lib/stacks/config"
+import { useStacks } from "@lib/stacks/StacksProvider"
+import { CONTRACTS } from "@lib/stacks/config"
 import {
-  callReadOnlyFunction,
+  fetchCallReadOnlyFunction,
   uintCV,
   principalCV,
   stringAsciiCV,
   stringUtf8CV,
   listCV,
-  buffCV,
+  bufferCV,
   cvToJSON,
   PostConditionMode,
   AnchorMode,
 } from "@stacks/transactions"
-import { StacksTestnet } from "@stacks/network"
+import { STACKS_TESTNET } from "@stacks/network"
 import type {
   Proposal,
   Vote,
@@ -22,7 +22,7 @@ import type {
   ProposalState,
 } from "@/types/governance"
 
-const network = new StacksTestnet()
+const network = STACKS_TESTNET
 const DAO_ADDRESS = CONTRACTS.testnet.daoGovernance
 const DAO_NAME = "dao-governance"
 const TOKEN_NAME = "governance-token"
@@ -57,7 +57,7 @@ interface UseDaoGovernanceReturn {
 }
 
 export function useDaoGovernance(): UseDaoGovernanceReturn {
-  const { isSignedIn, userData, doContractCall } = useStacks()
+  const { isSignedIn, walletInfo, network: activeNetwork } = useStacks()
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [currentProposal, setCurrentProposal] = useState<Proposal | null>(null)
   const [tokenInfo, setTokenInfo] = useState<GovernanceTokenInfo | null>(null)
@@ -65,7 +65,11 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const currentAddress = isSignedIn ? userData?.profile?.stxAddress?.testnet : undefined
+  const currentAddress = isSignedIn
+    ? activeNetwork === "mainnet"
+      ? walletInfo?.mainnetAddress
+      : walletInfo?.testnetAddress
+    : undefined
 
   // Fetch governance token info
   const refreshTokenInfo = useCallback(async () => {
@@ -73,7 +77,7 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
 
     try {
       const [balance, votingPower, delegation] = await Promise.all([
-        callReadOnlyFunction({
+        fetchCallReadOnlyFunction({
           contractAddress: DAO_ADDRESS,
           contractName: TOKEN_NAME,
           functionName: "get-balance",
@@ -81,7 +85,7 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
           senderAddress: currentAddress,
           network,
         }),
-        callReadOnlyFunction({
+        fetchCallReadOnlyFunction({
           contractAddress: DAO_ADDRESS,
           contractName: TOKEN_NAME,
           functionName: "get-voting-power",
@@ -89,7 +93,7 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
           senderAddress: currentAddress,
           network,
         }),
-        callReadOnlyFunction({
+        fetchCallReadOnlyFunction({
           contractAddress: DAO_ADDRESS,
           contractName: TOKEN_NAME,
           functionName: "get-delegation",
@@ -117,7 +121,7 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
   // Fetch treasury balance
   const refreshTreasuryBalance = useCallback(async () => {
     try {
-      const result = await callReadOnlyFunction({
+      const result = await fetchCallReadOnlyFunction({
         contractAddress: DAO_ADDRESS,
         contractName: DAO_NAME,
         functionName: "get-treasury-balance",
@@ -140,7 +144,7 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
   const getProposal = useCallback(
     async (proposalId: number): Promise<Proposal | null> => {
       try {
-        const result = await callReadOnlyFunction({
+        const result = await fetchCallReadOnlyFunction({
           contractAddress: DAO_ADDRESS,
           contractName: DAO_NAME,
           functionName: "get-proposal",
@@ -188,7 +192,7 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
 
     try {
       // Get total proposals count
-      const totalResult = await callReadOnlyFunction({
+      const totalResult = await fetchCallReadOnlyFunction({
         contractAddress: DAO_ADDRESS,
         contractName: DAO_NAME,
         functionName: "get-total-proposals",
@@ -236,43 +240,13 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
       setIsLoading(true)
       setError(null)
 
-      try {
-        const calldataCVs = calldata.map((data) => buffCV(Buffer.from(data, "hex")))
-
-        return new Promise((resolve, reject) => {
-          doContractCall({
-            network,
-            anchorMode: AnchorMode.Any,
-            contractAddress: DAO_ADDRESS,
-            contractName: DAO_NAME,
-            functionName: "create-proposal",
-            functionArgs: [
-              stringAsciiCV(title),
-              stringUtf8CV(description),
-              principalCV(targetContract),
-              stringAsciiCV(functionName),
-              listCV(calldataCVs),
-            ],
-            postConditionMode: PostConditionMode.Deny,
-            onFinish: (data) => {
-              setIsLoading(false)
-              resolve(data.txId)
-              refreshProposals()
-            },
-            onCancel: () => {
-              setIsLoading(false)
-              setError("Proposal creation cancelled")
-              reject(new Error("Cancelled"))
-            },
-          })
-        })
-      } catch (e: any) {
-        setIsLoading(false)
-        setError(e.message || "Failed to create proposal")
-        return null
-      }
+      // NOTE: This project currently doesn't expose a contract-call helper in StacksProvider.
+      // Keep the hook buildable by stubbing write methods until a contract-call integration is added.
+      setIsLoading(false)
+      setError("Contract calls are not configured in this build")
+      return null
     },
-    [currentAddress, doContractCall, refreshProposals],
+    [currentAddress],
   )
 
   // Vote on proposal
@@ -286,38 +260,11 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
       setIsLoading(true)
       setError(null)
 
-      try {
-        const supportBuff = Buffer.from([support])
-        const votingPowerMicro = Math.floor(votingPower * 1e6)
-
-        return new Promise((resolve, reject) => {
-          doContractCall({
-            network,
-            anchorMode: AnchorMode.Any,
-            contractAddress: DAO_ADDRESS,
-            contractName: DAO_NAME,
-            functionName: "vote-on-proposal",
-            functionArgs: [uintCV(proposalId), buffCV(supportBuff), uintCV(votingPowerMicro)],
-            postConditionMode: PostConditionMode.Deny,
-            onFinish: (data) => {
-              setIsLoading(false)
-              resolve(data.txId)
-              refreshProposals()
-            },
-            onCancel: () => {
-              setIsLoading(false)
-              setError("Vote cancelled")
-              reject(new Error("Cancelled"))
-            },
-          })
-        })
-      } catch (e: any) {
-        setIsLoading(false)
-        setError(e.message || "Failed to vote")
-        return null
-      }
+      setIsLoading(false)
+      setError("Contract calls are not configured in this build")
+      return null
     },
-    [currentAddress, doContractCall, refreshProposals],
+    [currentAddress],
   )
 
   // Execute proposal
@@ -331,35 +278,11 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
       setIsLoading(true)
       setError(null)
 
-      try {
-        return new Promise((resolve, reject) => {
-          doContractCall({
-            network,
-            anchorMode: AnchorMode.Any,
-            contractAddress: DAO_ADDRESS,
-            contractName: DAO_NAME,
-            functionName: "execute-proposal",
-            functionArgs: [uintCV(proposalId)],
-            postConditionMode: PostConditionMode.Deny,
-            onFinish: (data) => {
-              setIsLoading(false)
-              resolve(data.txId)
-              refreshProposals()
-            },
-            onCancel: () => {
-              setIsLoading(false)
-              setError("Execution cancelled")
-              reject(new Error("Cancelled"))
-            },
-          })
-        })
-      } catch (e: any) {
-        setIsLoading(false)
-        setError(e.message || "Failed to execute proposal")
-        return null
-      }
+      setIsLoading(false)
+      setError("Contract calls are not configured in this build")
+      return null
     },
-    [currentAddress, doContractCall, refreshProposals],
+    [currentAddress],
   )
 
   // Activate proposal
@@ -373,42 +296,18 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
       setIsLoading(true)
       setError(null)
 
-      try {
-        return new Promise((resolve, reject) => {
-          doContractCall({
-            network,
-            anchorMode: AnchorMode.Any,
-            contractAddress: DAO_ADDRESS,
-            contractName: DAO_NAME,
-            functionName: "activate-proposal",
-            functionArgs: [uintCV(proposalId)],
-            postConditionMode: PostConditionMode.Deny,
-            onFinish: (data) => {
-              setIsLoading(false)
-              resolve(data.txId)
-              refreshProposals()
-            },
-            onCancel: () => {
-              setIsLoading(false)
-              setError("Activation cancelled")
-              reject(new Error("Cancelled"))
-            },
-          })
-        })
-      } catch (e: any) {
-        setIsLoading(false)
-        setError(e.message || "Failed to activate proposal")
-        return null
-      }
+      setIsLoading(false)
+      setError("Contract calls are not configured in this build")
+      return null
     },
-    [currentAddress, doContractCall, refreshProposals],
+    [currentAddress],
   )
 
   // Get vote
   const getVote = useCallback(
     async (proposalId: number, voter: string): Promise<Vote | null> => {
       try {
-        const result = await callReadOnlyFunction({
+        const result = await fetchCallReadOnlyFunction({
           contractAddress: DAO_ADDRESS,
           contractName: DAO_NAME,
           functionName: "get-vote",
@@ -445,7 +344,7 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
   const hasVoted = useCallback(
     async (proposalId: number, voter: string): Promise<boolean> => {
       try {
-        const result = await callReadOnlyFunction({
+        const result = await fetchCallReadOnlyFunction({
           contractAddress: DAO_ADDRESS,
           contractName: DAO_NAME,
           functionName: "has-voted",
@@ -475,35 +374,11 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
       setIsLoading(true)
       setError(null)
 
-      try {
-        return new Promise((resolve, reject) => {
-          doContractCall({
-            network,
-            anchorMode: AnchorMode.Any,
-            contractAddress: DAO_ADDRESS,
-            contractName: TOKEN_NAME,
-            functionName: "delegate-votes",
-            functionArgs: [principalCV(delegatee)],
-            postConditionMode: PostConditionMode.Deny,
-            onFinish: (data) => {
-              setIsLoading(false)
-              resolve(data.txId)
-              refreshTokenInfo()
-            },
-            onCancel: () => {
-              setIsLoading(false)
-              setError("Delegation cancelled")
-              reject(new Error("Cancelled"))
-            },
-          })
-        })
-      } catch (e: any) {
-        setIsLoading(false)
-        setError(e.message || "Failed to delegate votes")
-        return null
-      }
+      setIsLoading(false)
+      setError("Contract calls are not configured in this build")
+      return null
     },
-    [currentAddress, doContractCall, refreshTokenInfo],
+    [currentAddress],
   )
 
   // Load data on mount and when address changes

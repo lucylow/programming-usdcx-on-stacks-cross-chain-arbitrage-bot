@@ -3,13 +3,13 @@ import { useStacks } from "../StacksProvider"
 import type { Transaction } from "../StacksProvider"
 
 export function useStacksTransactions() {
-  const { transactions, addTransaction, updateTransaction, getTransaction, networkInstance } = useStacks()
+  const { transactions, addTransaction, updateTransaction, getTransaction, networkInfo } = useStacks()
   const [isPolling, setIsPolling] = useState(false)
 
   const pollTransactionStatus = useCallback(
     async (txId: string) => {
       try {
-        const response = await fetch(`${networkInstance.coreApiUrl}/extended/v1/tx/${txId}`)
+        const response = await fetch(`${networkInfo.apiUrl}/extended/v1/tx/${txId}`)
         if (!response.ok) return
 
         const data = await response.json()
@@ -19,7 +19,6 @@ export function useStacksTransactions() {
           updateTransaction(txId, {
             status: status === "abort_by_response" || status === "abort_by_post_condition" ? "failed" : status,
             blockHeight: data.block_height,
-            blockHash: data.block_hash,
             error: status === "failed" ? data.tx_result?.repr : undefined,
           })
           return true // Transaction finalized
@@ -30,7 +29,7 @@ export function useStacksTransactions() {
         return false
       }
     },
-    [networkInstance.coreApiUrl, updateTransaction],
+    [networkInfo.apiUrl, updateTransaction],
   )
 
   const startPolling = useCallback(

@@ -89,6 +89,8 @@ export function OpportunityDetailModal({
     }).format(value)
   }
 
+  const roiPercentage = opportunity.tradeSize > 0 ? (opportunity.expectedProfit / opportunity.tradeSize) * 100 : 0
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-card border-border">
@@ -119,7 +121,7 @@ export function OpportunityDetailModal({
               </div>
               <div className="text-2xl font-bold text-primary">{formatCurrency(opportunity.expectedProfit)}</div>
               <div className="text-xs text-muted-foreground mt-1">
-                {opportunity.profitPercentage?.toFixed(2) || opportunity.spread.toFixed(2)}% ROI
+                {roiPercentage.toFixed(2)}% ROI
               </div>
             </div>
             <div className="bg-gradient-to-br from-accent/10 to-accent/5 rounded-lg p-4 border border-accent/20">

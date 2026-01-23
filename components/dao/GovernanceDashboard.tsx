@@ -48,7 +48,7 @@ import { useStacks } from "@lib/stacks/StacksProvider"
 import { formatDistanceToNow } from "date-fns"
 
 export function GovernanceDashboard() {
-  const { isSignedIn, openSignIn } = useStacks()
+  const { isSignedIn, connect, walletInfo, network } = useStacks()
   const {
     proposals,
     tokenInfo,
@@ -68,6 +68,12 @@ export function GovernanceDashboard() {
   const [votingPower, setVotingPower] = useState("")
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showVoteDialog, setShowVoteDialog] = useState(false)
+
+  const currentAddress = walletInfo
+    ? network === "mainnet"
+      ? walletInfo.mainnetAddress
+      : walletInfo.testnetAddress
+    : ""
 
   // Proposal form state
   const [proposalTitle, setProposalTitle] = useState("")
@@ -347,7 +353,7 @@ export function GovernanceDashboard() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 pt-2 border-t border-white/10">
-                    {proposal.state === ProposalState.Pending && proposal.creator === isSignedIn && (
+                    {proposal.state === ProposalState.Pending && proposal.creator === currentAddress && (
                       <Button
                         onClick={() => handleActivate(proposal.id)}
                         variant="outline"
@@ -452,7 +458,7 @@ export function GovernanceDashboard() {
         <Card className="bg-card-bg border-white/10 p-6 text-center">
           <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
           <p className="text-muted-foreground mb-4">Connect your wallet to participate in governance</p>
-          <Button onClick={openSignIn} className="bg-brand hover:bg-brand-dark">
+          <Button onClick={connect} className="bg-brand hover:bg-brand-dark">
             Connect Wallet
           </Button>
         </Card>

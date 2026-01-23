@@ -4,7 +4,7 @@ import type React from "react"
 import { useState, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, Home, Bot, BarChart3, FileText, Settings, HelpCircle, Command } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
 interface CommandItem {
@@ -20,7 +20,7 @@ export default function CommandPalette() {
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const router = useRouter()
+  const navigate = useNavigate()
 
   const commands: CommandItem[] = [
     {
@@ -28,7 +28,7 @@ export default function CommandPalette() {
       label: "Go to Home",
       description: "Navigate to homepage",
       icon: Home,
-      action: () => router.push("/"),
+      action: () => navigate("/"),
       keywords: ["home", "main", "landing"],
     },
     {
@@ -36,7 +36,7 @@ export default function CommandPalette() {
       label: "Bot Dashboard",
       description: "View bot performance",
       icon: Bot,
-      action: () => router.push("/bot/dashboard"),
+      action: () => navigate("/bot/dashboard"),
       keywords: ["dashboard", "bot", "monitor", "performance"],
     },
     {
@@ -44,7 +44,7 @@ export default function CommandPalette() {
       label: "Analytics",
       description: "View detailed analytics",
       icon: BarChart3,
-      action: () => router.push("/analytics"),
+      action: () => navigate("/analytics"),
       keywords: ["analytics", "stats", "metrics", "performance"],
     },
     {
@@ -52,7 +52,7 @@ export default function CommandPalette() {
       label: "Trade History",
       description: "View past trades",
       icon: FileText,
-      action: () => router.push("/bot/history"),
+      action: () => navigate("/bot/history"),
       keywords: ["history", "trades", "past", "transactions"],
     },
     {
@@ -60,7 +60,7 @@ export default function CommandPalette() {
       label: "Settings",
       description: "Configure bot settings",
       icon: Settings,
-      action: () => router.push("/settings"),
+      action: () => navigate("/settings"),
       keywords: ["settings", "config", "preferences"],
     },
     {
@@ -68,7 +68,7 @@ export default function CommandPalette() {
       label: "Help & Documentation",
       description: "Get help and view docs",
       icon: HelpCircle,
-      action: () => router.push("/docs"),
+      action: () => navigate("/docs"),
       keywords: ["help", "docs", "documentation", "faq", "support"],
     },
   ]
