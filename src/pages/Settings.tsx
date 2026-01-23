@@ -3,7 +3,7 @@ import { Button } from "../components/ui/button"
 import { Bell, Shield, Palette, Globe, Wallet, LogOut, Trash2, Save } from "lucide-react"
 import { motion } from "framer-motion"
 import { Badge } from "../components/ui/badge"
-import { useState } from "react"
+import { useState, useContext } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Switch } from "../components/ui/switch"
@@ -15,16 +15,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select"
-
-// @ts-ignore
-import { useStacks } from "@lib/stacks/StacksProvider"
+import { StacksContext } from "../../lib/stacks/StacksProvider"
 
 export default function Settings() {
-  let stacksData: any = null
-  
-  try {
-    stacksData = useStacks?.()
-  } catch {}
+  // Safely access context without throwing if provider is not available
+  const stacksContext = useContext(StacksContext)
+  const stacksData = stacksContext
 
   const [notifications, setNotifications] = useState({
     email: true,
@@ -54,15 +50,20 @@ export default function Settings() {
   }
 
   const handleDisconnect = () => {
-    if (stacksData?.signOut) {
-      stacksData.signOut()
+    if (stacksData?.disconnect) {
+      stacksData.disconnect()
       toast.success("Wallet disconnected")
     } else {
       toast.info("Wallet not connected")
     }
   }
 
-  const wallet = stacksData?.userSession?.loadUserData?.() || {
+  const wallet = stacksData ? {
+    connected: stacksData.isSignedIn,
+    address: stacksData.network === "mainnet" 
+      ? stacksData.walletInfo?.mainnetAddress 
+      : stacksData.walletInfo?.testnetAddress
+  } : {
     connected: false,
     address: null
   }
@@ -288,15 +289,18 @@ export default function Settings() {
           </Card>
 
           {/* Privacy */}
-          <Card className="bg-dark/60 border-white/10 backdrop-blur-xl mb-6">
-            <CardHeader>
+          <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 mb-6">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <CardHeader className="relative">
               <div className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-brand" />
+                <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+                  <Shield className="w-5 h-5 text-primary" />
+                </div>
                 <CardTitle>Privacy</CardTitle>
               </div>
               <CardDescription>Control your data and privacy settings</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="relative space-y-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label>Share Analytics</Label>
@@ -331,16 +335,19 @@ export default function Settings() {
           </Card>
 
           {/* Danger Zone */}
-          <Card className="bg-dark/60 border-error/30 backdrop-blur-xl mb-6">
-            <CardHeader>
+          <Card className="group relative overflow-hidden border-destructive/30 bg-card/80 backdrop-blur-sm hover:border-destructive/50 transition-all duration-300 mb-6">
+            <div className="absolute inset-0 bg-gradient-to-br from-destructive/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <CardHeader className="relative">
               <div className="flex items-center gap-2">
-                <Trash2 className="w-5 h-5 text-error" />
-                <CardTitle className="text-error">Danger Zone</CardTitle>
+                <div className="p-2 rounded-lg bg-destructive/10 border border-destructive/20">
+                  <Trash2 className="w-5 h-5 text-destructive" />
+                </div>
+                <CardTitle className="text-destructive">Danger Zone</CardTitle>
               </div>
               <CardDescription>Irreversible actions</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-4 bg-darker/60 rounded-lg border border-error/20">
+            <CardContent className="relative space-y-4">
+              <div className="p-4 bg-card/50 rounded-lg border border-destructive/20">
                 <p className="text-sm font-medium mb-2">Clear All Data</p>
                 <p className="text-xs text-muted-foreground mb-4">
                   This will delete all your local preferences and cache. This action cannot be undone.
