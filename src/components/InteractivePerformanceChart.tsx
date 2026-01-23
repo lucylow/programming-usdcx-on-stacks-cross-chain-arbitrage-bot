@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { TrendingUp, TrendingDown, DollarSign, Activity, ZoomIn, ZoomOut } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card } from "./ui/card";
+import { Button } from "./ui/button";
 
 interface DataPoint {
   time: number;
@@ -78,7 +78,7 @@ export function InteractivePerformanceChart() {
 
   const areaData = `${pathData} L 100 100 L 0 100 Z`;
 
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!chartRef.current) return;
     const rect = chartRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;

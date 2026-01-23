@@ -1,30 +1,21 @@
-import { BotControlPanel } from "@/components/dapp/BotControlPanel"
-import { LiveOpportunities } from "@/components/dapp/LiveOpportunities"
-import { RecentTrades } from "@/components/dapp/RecentTrades"
-import { WalletStatus } from "@/components/dapp/WalletStatus"
-import { PriceChart } from "@/components/dapp/PriceChart"
-import { Card } from "@/components/ui/card"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Card } from "../components/ui/card"
+import { Skeleton } from "../components/ui/skeleton"
 import { BarChart3, TrendingUp, DollarSign, Activity } from "lucide-react"
-import Navigation from "@/components/layout/Navigation"
-import { ThemeToggle } from "@/components/ui/theme-toggle"
-import { ErrorBoundary } from "@/components/ui/error-boundary"
-import { useDapp } from "@/lib/dapp/DappProvider"
+import Navigation from "../components/layout/Navigation"
 
 export default function BotDashboard() {
-  const { performance, botStatus, isLoading } = useDapp()
+  // Mock data for standalone page
+  const isLoading = false;
+  const performance = { totalProfit: 12500, totalTrades: 156 };
+  const botStatus = { winRate: 0.87, isActive: true };
 
   return (
-    <ErrorBoundary>
-      <div className="min-h-screen bg-darker text-white">
-        <Navigation />
-        <div className="fixed top-4 right-4 z-50">
-          <ThemeToggle />
-        </div>
-        <div className="pt-24 pb-12 px-4">
+    <div className="min-h-screen bg-background text-foreground">
+      <Navigation />
+      <div className="pt-24 pb-12 px-4">
         <div className="container mx-auto max-w-7xl">
           <div className="flex items-center gap-3 mb-8">
-            <BarChart3 className="w-8 h-8 text-brand" />
+            <BarChart3 className="w-8 h-8 text-primary" />
             <h1 className="text-4xl font-bold">Bot Dashboard</h1>
           </div>
           <p className="text-muted-foreground mb-8 max-w-3xl">
@@ -34,74 +25,74 @@ export default function BotDashboard() {
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card className="bg-card-bg/50 border-white/10 p-6">
+            <Card className="bg-card/50 border-border p-6">
               <div className="flex items-center justify-between mb-4">
-                <DollarSign className="w-5 h-5 text-accent" />
+                <DollarSign className="w-5 h-5 text-primary" />
                 <span className="text-sm text-muted-foreground">Total Profit</span>
               </div>
               {isLoading ? (
                 <Skeleton className="h-9 w-24" />
               ) : (
-                <div className="text-3xl font-bold text-white">
+                <div className="text-3xl font-bold">
                   ${((performance?.totalProfit || 0) / 1000).toFixed(1)}K
                 </div>
               )}
             </Card>
 
-            <Card className="bg-card-bg/50 border-white/10 p-6">
+            <Card className="bg-card/50 border-border p-6">
               <div className="flex items-center justify-between mb-4">
-                <Activity className="w-5 h-5 text-brand" />
+                <Activity className="w-5 h-5 text-primary" />
                 <span className="text-sm text-muted-foreground">Total Trades</span>
               </div>
               {isLoading ? (
                 <Skeleton className="h-9 w-16" />
               ) : (
-                <div className="text-3xl font-bold text-white">{performance?.totalTrades || 0}</div>
+                <div className="text-3xl font-bold">{performance?.totalTrades || 0}</div>
               )}
             </Card>
 
-            <Card className="bg-card-bg/50 border-white/10 p-6">
+            <Card className="bg-card/50 border-border p-6">
               <div className="flex items-center justify-between mb-4">
-                <TrendingUp className="w-5 h-5 text-accent" />
+                <TrendingUp className="w-5 h-5 text-primary" />
                 <span className="text-sm text-muted-foreground">Win Rate</span>
               </div>
               {isLoading ? (
                 <Skeleton className="h-9 w-16" />
               ) : (
-                <div className="text-3xl font-bold text-white">
+                <div className="text-3xl font-bold">
                   {((botStatus?.winRate || 0) * 100).toFixed(1)}%
                 </div>
               )}
             </Card>
 
-            <Card className="bg-card-bg/50 border-white/10 p-6">
+            <Card className="bg-card/50 border-border p-6">
               <div className="flex items-center justify-between mb-4">
-                <BarChart3 className="w-5 h-5 text-brand" />
+                <BarChart3 className="w-5 h-5 text-primary" />
                 <span className="text-sm text-muted-foreground">Status</span>
               </div>
               {isLoading ? (
                 <Skeleton className="h-9 w-20" />
               ) : (
-                <div className="text-3xl font-bold text-white">
+                <div className="text-3xl font-bold">
                   {botStatus?.isActive ? "Active" : "Inactive"}
                 </div>
               )}
             </Card>
           </div>
 
-          {/* Main Content */}
-          <div className="space-y-6">
-            <WalletStatus />
-            <BotControlPanel />
-            <PriceChart />
-            <div className="grid lg:grid-cols-2 gap-6">
-              <LiveOpportunities />
-              <RecentTrades />
-            </div>
+          {/* Placeholder Content */}
+          <div className="grid lg:grid-cols-2 gap-6">
+            <Card className="bg-card/50 border-border p-6">
+              <h3 className="text-lg font-semibold mb-4">Live Opportunities</h3>
+              <p className="text-muted-foreground">Real-time arbitrage opportunities will appear here.</p>
+            </Card>
+            <Card className="bg-card/50 border-border p-6">
+              <h3 className="text-lg font-semibold mb-4">Recent Trades</h3>
+              <p className="text-muted-foreground">Your recent trading history will appear here.</p>
+            </Card>
           </div>
         </div>
       </div>
-    </ErrorBoundary>
+    </div>
   )
 }
-
