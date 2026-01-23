@@ -1,12 +1,10 @@
 import { GovernanceDashboard } from "../../components/dao/GovernanceDashboard"
-import Navigation from "@/components/layout/Navigation"
 import { Gavel } from "lucide-react"
 
 export default function GovernancePage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Navigation />
-      <div className="pt-24 pb-12 px-4">
+      <div className="pb-12 px-4">
         <div className="container mx-auto max-w-7xl">
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-4">

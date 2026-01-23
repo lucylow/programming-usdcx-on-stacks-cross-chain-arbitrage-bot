@@ -7,7 +7,6 @@ import { RiskAssessmentDashboard } from "@/components/RiskAssessmentDashboard";
 import { ChainBridgeAnimation } from "@/components/ChainBridgeAnimation";
 import { InteractivePerformanceChart } from "@/components/InteractivePerformanceChart";
 import { TradeSimulator } from "@/components/TradeSimulator";
-import Navigation from "@/components/layout/Navigation";
 import { 
   Zap, Calculator, Shield, Cable, TrendingUp, Settings,
   Sparkles, BarChart3, BookOpen
@@ -20,8 +19,7 @@ export default function InteractiveDemoPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Navigation />
-      <div className="pt-24 pb-12 px-4">
+      <div className="pb-12 px-4">
         <div className="container mx-auto max-w-7xl">
           {/* Header */}
           <div className="text-center mb-12">

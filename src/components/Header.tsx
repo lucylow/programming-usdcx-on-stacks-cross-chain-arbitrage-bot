@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, memo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
 import { Bot, Menu, X, BarChart3, TrendingUp, BookOpen, Home, AlertCircle, Lightbulb, Play, Sparkles, Users, Info } from "lucide-react";
@@ -52,60 +52,43 @@ export function Header() {
     >
       <div className="container mx-auto px-4 md:px-6">
         <nav className="flex items-center justify-between h-20">
-          <Link to="/" className="flex items-center gap-2.5 group">
-            <Bot className="w-8 h-8 text-primary group-hover:scale-110 transition-transform" />
+          <Link 
+            to="/" 
+            className="flex items-center gap-2.5 group"
+            aria-label="Home - ArbitrageBot"
+          >
+            <Bot className="w-8 h-8 text-primary group-hover:scale-110 transition-transform" aria-hidden="true" />
             <span className="text-xl font-bold text-foreground">ArbitrageBot</span>
           </Link>
 
-          <div className="hidden md:flex items-center gap-4">
+          <nav className="hidden md:flex items-center gap-4" aria-label="Main navigation">
             {isHomePage ? (
               // Show section links on home page
               <>
                 {sectionLinks.map((link) => (
-                  <a
+                  <SectionLink
                     key={link.href}
-                    href={link.href}
-                    className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-all relative group font-medium px-3 py-2 rounded-lg hover:bg-accent/50"
+                    link={link}
                     onClick={(e) => {
                       e.preventDefault();
-                      const element = document.querySelector(link.href);
-                      if (element) {
-                        element.scrollIntoView({ behavior: "smooth", block: "start" });
-                      }
+                      handleSectionClick(link.href);
                     }}
-                  >
-                    {link.icon && <link.icon className="w-4 h-4 group-hover:scale-110 transition-transform" />}
-                    <span>{link.label}</span>
-                    <span className="absolute -bottom-1 left-3 right-3 h-0.5 bg-primary scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
-                  </a>
+                  />
                 ))}
               </>
             ) : (
               // Show page navigation links on other pages
               <>
-                {pageLinks.map((link) => {
-                  const isActive = location.pathname === link.href || 
-                    (link.href !== "/" && location.pathname.startsWith(link.href));
-                  return (
-                    <Link
-                      key={link.href}
-                      to={link.href}
-                      className={cn(
-                        "flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors relative group font-medium px-3 py-2 rounded-lg",
-                        isActive && "text-primary bg-primary/10"
-                      )}
-                    >
-                      <link.icon className="w-4 h-4" />
-                      {link.label}
-                      {isActive && (
-                        <span className="absolute -bottom-1 left-3 right-3 h-0.5 bg-primary" />
-                      )}
-                    </Link>
-                  );
-                })}
+                {activePageLinks.map(({ link, isActive }) => (
+                  <NavLink
+                    key={link.href}
+                    link={link}
+                    isActive={isActive}
+                  />
+                ))}
               </>
             )}
-          </div>
+          </nav>
 
           <div className="hidden md:flex items-center gap-3">
             {isHomePage ? (
@@ -134,8 +117,10 @@ export function Header() {
             className="md:hidden text-foreground"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             aria-label="Toggle menu"
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="mobile-menu"
           >
-            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            {isMobileMenuOpen ? <X className="w-6 h-6" aria-hidden="true" /> : <Menu className="w-6 h-6" aria-hidden="true" />}
           </button>
         </nav>
 
@@ -220,4 +205,5 @@ export function Header() {
       </div>
     </motion.header>
   );
-}
+});
+Header.displayName = "Header";

@@ -24,7 +24,6 @@ import {
   BarChart3,
   XCircle
 } from "lucide-react"
-import Navigation from "@/components/layout/Navigation"
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
@@ -316,8 +315,7 @@ export default function AnalyticsRisk() {
 
   return (
     <div className="min-h-screen bg-darker text-white">
-      <Navigation />
-      <div className="pt-24 pb-12 px-4">
+      <div className="pb-12 px-4">
         <div className="container mx-auto max-w-7xl">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3">

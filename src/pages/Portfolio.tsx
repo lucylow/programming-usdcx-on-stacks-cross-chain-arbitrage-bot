@@ -1,7 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Skeleton } from "../components/ui/skeleton"
 import { Wallet, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Copy, ExternalLink, RefreshCw, Eye, EyeOff } from "lucide-react"
-import Navigation from "../components/layout/Navigation"
 import { motion } from "framer-motion"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
@@ -102,8 +101,7 @@ export default function Portfolio() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-darker via-dark to-darker">
-      <Navigation />
-      <div className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

@@ -1,6 +1,5 @@
 import { Card } from "@/components/ui/card"
 import { BookOpen, FileText, Code, Video, ExternalLink, HelpCircle, Zap } from "lucide-react"
-import Navigation from "@/components/layout/Navigation"
 import { Link } from "react-router-dom"
 
 const resources = [
@@ -51,8 +50,7 @@ const resources = [
 export default function Resources() {
   return (
     <div className="min-h-screen bg-darker text-white">
-      <Navigation />
-      <div className="pt-24 pb-12 px-4">
+      <div className="pb-12 px-4">
         <div className="container mx-auto max-w-7xl">
           <div className="flex items-center gap-3 mb-8">
             <BookOpen className="w-8 h-8 text-brand" />

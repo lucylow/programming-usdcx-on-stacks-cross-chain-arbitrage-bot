@@ -2,7 +2,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Search, ExternalLink, ArrowUpRight, ArrowDownRight, Clock, CheckCircle2, XCircle, Loader2 } from "lucide-react"
-import Navigation from "../components/layout/Navigation"
 import { motion } from "framer-motion"
 import { Badge } from "../components/ui/badge"
 import { useState } from "react"
@@ -139,8 +138,7 @@ export default function Activity() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-darker via-dark to-darker">
-      <Navigation />
-      <div className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

@@ -1,15 +1,33 @@
 import { motion } from "framer-motion";
 import { Trophy, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 const stats = [
   { value: "0.5%+", label: "Avg. Profit per Trade" },
   { value: "45s", label: "Avg. Execution Time" },
   { value: "95%", label: "Success Rate" },
   { value: "$3K", label: "Hackathon Prize" },
-];
+] as const;
 
-export function Hero() {
+// Memoized stat card component
+const StatCard = memo(({ stat, index }: { stat: typeof stats[number]; index: number }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: 0.7 + index * 0.1 }}
+    className="flex flex-col items-center"
+  >
+    <span className="text-3xl md:text-4xl font-bold text-secondary">
+      {stat.value}
+    </span>
+    <span className="text-sm text-muted-foreground mt-2">{stat.label}</span>
+  </motion.div>
+));
+StatCard.displayName = "StatCard";
+
+export const Hero = memo(() => {
+  const memoizedStats = useMemo(() => stats, []);
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
       {/* Background gradient */}
@@ -52,10 +70,10 @@ export function Hero() {
               size="lg"
               className="bg-gradient-to-r from-primary to-primary-dark hover:opacity-90 text-lg px-8 py-6 glow-primary"
             >
-              <a href="#demo" className="flex items-center gap-2">
+              <Link to="/bot" className="flex items-center gap-2">
                 <PlayCircle className="w-5 h-5" />
                 Launch Interactive Demo
-              </a>
+              </Link>
             </Button>
           </motion.div>
 
@@ -64,24 +82,16 @@ export function Hero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6, duration: 0.8 }}
             className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12 mt-20"
+            role="list"
+            aria-label="Key statistics"
           >
-            {stats.map((stat, index) => (
-              <motion.div
-                key={stat.label}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.7 + index * 0.1 }}
-                className="flex flex-col items-center"
-              >
-                <span className="text-3xl md:text-4xl font-bold text-secondary">
-                  {stat.value}
-                </span>
-                <span className="text-sm text-muted-foreground mt-2">{stat.label}</span>
-              </motion.div>
+            {memoizedStats.map((stat, index) => (
+              <StatCard key={stat.label} stat={stat} index={index} />
             ))}
           </motion.div>
         </motion.div>
       </div>
     </section>
   );
-}
+});
+Hero.displayName = "Hero";

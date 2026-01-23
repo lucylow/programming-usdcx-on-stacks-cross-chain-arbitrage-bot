@@ -1,6 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Zap, AlertCircle, TrendingUp, Sparkles, Filter, Search, RefreshCw, ArrowLeft, FileText, BarChart3 } from "lucide-react"
-import Navigation from "../components/layout/Navigation"
 import { motion } from "framer-motion"
 import { Badge } from "../components/ui/badge"
 import { Input } from "../components/ui/input"
@@ -22,8 +21,7 @@ export default function BotOpportunities() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Navigation />
-      <div className="pt-24 pb-12 px-4">
+      <div className="pb-12 px-4">
         <div className="container mx-auto max-w-7xl">
           <motion.div
             initial={{ opacity: 0, y: 20 }}

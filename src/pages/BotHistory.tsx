@@ -1,6 +1,5 @@
 import { Card, CardContent } from "../components/ui/card"
 import { FileText, Filter, Download, Calendar, TrendingUp, TrendingDown, Search, RefreshCw, ChevronLeft, ChevronRight, ExternalLink, BarChart3, Zap } from "lucide-react"
-import Navigation from "../components/layout/Navigation"
 import { Button } from "../components/ui/button"
 import { EmptyState } from "../../components/ui/empty-state"
 import { Input } from "../components/ui/input"
@@ -31,8 +30,7 @@ export default function BotHistory() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Navigation />
-      <div className="pt-24 pb-12 px-4">
+      <div className="pb-12 px-4">
         <div className="container mx-auto max-w-7xl">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
