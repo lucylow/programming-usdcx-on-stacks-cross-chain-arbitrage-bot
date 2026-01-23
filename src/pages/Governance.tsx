@@ -1,4 +1,4 @@
-import { GovernanceDashboard } from "@/components/dao/GovernanceDashboard"
+import { GovernanceDashboard } from "../../components/dao/GovernanceDashboard"
 import Navigation from "@/components/layout/Navigation"
 import { Gavel } from "lucide-react"
 

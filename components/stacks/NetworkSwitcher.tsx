@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useStacksNetwork } from "@/lib/stacks/hooks"
+import { useStacksNetwork } from "@lib/stacks/hooks"
 import { Card } from "@/components/ui/card"
 
 export function NetworkSwitcher() {

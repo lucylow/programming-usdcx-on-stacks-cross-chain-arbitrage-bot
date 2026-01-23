@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useDaoGovernance } from "@/hooks/useDaoGovernance"
+import { useDaoGovernance } from "../../hooks/useDaoGovernance"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -44,7 +44,7 @@ import {
   formatProposalState,
   formatVoteSupport,
 } from "@/types/governance"
-import { useStacks } from "@/lib/stacks/StacksProvider"
+import { useStacks } from "@lib/stacks/StacksProvider"
 import { formatDistanceToNow } from "date-fns"
 
 export function GovernanceDashboard() {

@@ -11,6 +11,7 @@ import { motion } from "framer-motion"
 import { Link, useNavigate } from "react-router-dom"
 
 export default function BotHistory() {
+  const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)

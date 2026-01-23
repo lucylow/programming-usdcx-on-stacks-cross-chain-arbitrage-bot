@@ -35,9 +35,24 @@ class DappApi {
   }
 
   private async fetchBackend<T>(endpoint: string, options?: RequestInit, retries = 3): Promise<T> {
-    // On Lovable with mock data enabled, skip network requests
-    if (this.useMockData && isLovableEnvironment()) {
+    // On Lovable or when backendUrl is empty, skip network requests and use mock data
+    const isLovable = isLovableEnvironment()
+    const hasEmptyBaseUrl = !this.backendUrl || this.backendUrl.trim() === ""
+    
+    if (this.useMockData && (isLovable || hasEmptyBaseUrl)) {
       console.log(`[Lovable] Using mock data for: ${endpoint}`)
+      return this.getMockData<T>(endpoint)
+    }
+    
+    // Also use mock data if explicitly on Lovable platform (even if useMockData is false)
+    if (isLovable && hasEmptyBaseUrl) {
+      console.log(`[Lovable] Using mock data for: ${endpoint} (Lovable environment detected)`)
+      return this.getMockData<T>(endpoint)
+    }
+
+    // If backendUrl is empty, use mock data instead of attempting fetch
+    if (hasEmptyBaseUrl) {
+      console.log(`[Lovable] Backend URL is empty, using mock data for: ${endpoint}`)
       return this.getMockData<T>(endpoint)
     }
 

@@ -177,9 +177,24 @@ class ApiClient {
   }
 
   private async fetch<T>(endpoint: string, options?: RequestInit, retries = 3): Promise<T> {
-    // On Lovable with mock data enabled, skip network requests
-    if (USE_MOCK_DATA && isLovableEnvironment()) {
+    // On Lovable or when baseUrl is empty, skip network requests and use mock data
+    const isLovable = isLovableEnvironment()
+    const hasEmptyBaseUrl = !this.baseUrl || this.baseUrl.trim() === ""
+    
+    if (USE_MOCK_DATA && (isLovable || hasEmptyBaseUrl)) {
       console.log(`[Lovable] Using mock data for: ${endpoint}`)
+      return this.getMockData<T>(endpoint)
+    }
+    
+    // Also use mock data if explicitly on Lovable platform (even if USE_MOCK_DATA is false)
+    if (isLovable && hasEmptyBaseUrl) {
+      console.log(`[Lovable] Using mock data for: ${endpoint} (Lovable environment detected)`)
+      return this.getMockData<T>(endpoint)
+    }
+
+    // If baseUrl is empty, use mock data instead of attempting fetch
+    if (hasEmptyBaseUrl) {
+      console.log(`[Lovable] Base URL is empty, using mock data for: ${endpoint}`)
       return this.getMockData<T>(endpoint)
     }
 

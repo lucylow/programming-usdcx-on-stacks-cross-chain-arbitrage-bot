@@ -1178,14 +1178,14 @@ export async function retryWithTracking<T>(
   let lastError: unknown
   let attempt = 0
 
-  while (attempt <= maxRetries) {
+  while (attempt < maxRetries) {
+    attempt++
     try {
       return await fn()
     } catch (error) {
       lastError = error
-      attempt++
 
-      if (!shouldRetry(error, attempt) || attempt > maxRetries) {
+      if (!shouldRetry(error, attempt) || attempt >= maxRetries) {
         throw error
       }
 
@@ -1248,7 +1248,7 @@ let correlationIdCounter = 0
  * Generate a unique correlation ID for error tracking
  */
 export function generateCorrelationId(): string {
-  return `err_${Date.now()}_${++correlationIdCounter}_${Math.random().toString(36).substr(2, 9)}`
+  return `err_${Date.now()}_${++correlationIdCounter}_${Math.random().toString(36).slice(2, 11)}`
 }
 
 /**
@@ -1837,12 +1837,21 @@ export class ErrorTransformerRegistry {
     
     for (const [pattern, transformer] of Array.from(this.transformers.entries())) {
       try {
-        const regex = new RegExp(pattern)
-        if (regex.test(message)) {
-          return transformer(error)
+        // Check if pattern is a RegExp string representation (format: "/pattern/flags")
+        const regexMatch = pattern.match(/^\/(.+)\/([gimsuy]*)$/)
+        if (regexMatch) {
+          const regex = new RegExp(regexMatch[1], regexMatch[2])
+          if (regex.test(message)) {
+            return transformer(error)
+          }
+        } else {
+          // Treat as plain string pattern
+          if (message.includes(pattern.toLowerCase())) {
+            return transformer(error)
+          }
         }
       } catch {
-        // If pattern is not a regex, check for substring match
+        // If RegExp parsing fails, fall back to substring match
         if (message.includes(pattern.toLowerCase())) {
           return transformer(error)
         }
