@@ -3,8 +3,7 @@
 import type React from "react"
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { Link, useLocation } from "react-router-dom"
 import {
   Home,
   Bot,
@@ -21,7 +20,6 @@ import {
   FileText,
   HelpCircle,
 } from "lucide-react"
-import WalletConnect from "../advanced/WalletConnect"
 import { cn } from "@/lib/utils"
 
 interface NavItem {
@@ -127,7 +125,8 @@ const navigationItems: NavItem[] = [
   }))
 
 export default function Navigation() {
-  const pathname = usePathname()
+  const location = useLocation()
+  const pathname = location.pathname
   const [scrolled, setScrolled] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
@@ -157,7 +156,7 @@ export default function Navigation() {
       >
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between h-16">
-            <Link href="/" className="flex items-center space-x-3 group">
+            <Link to="/" className="flex items-center space-x-3 group">
               <motion.div
                 whileHover={{ rotate: 360 }}
                 transition={{ duration: 0.5 }}
@@ -195,7 +194,6 @@ export default function Navigation() {
               </button>
 
               <NotificationButton />
-              <WalletConnect />
 
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -224,7 +222,7 @@ function NavItem({ item, pathname, activeDropdown, setActiveDropdown }: any) {
 
   if (!hasChildren) {
     return (
-      <Link href={item.href}>
+      <Link to={item.href}>
         <motion.div
           whileHover={{ scale: 1.05 }}
           className={cn(
@@ -279,7 +277,7 @@ function NavItem({ item, pathname, activeDropdown, setActiveDropdown }: any) {
             {item.children
               .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
               .map((child: any, index: number) => (
-              <Link key={child.href} href={child.href}>
+              <Link key={child.href} to={child.href}>
                 <motion.div
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -361,7 +359,7 @@ function MobileNavItem({ item, pathname, onClose }: any) {
 
   if (!hasChildren) {
     return (
-      <Link href={item.href} onClick={onClose}>
+      <Link to={item.href} onClick={onClose}>
         <div
           className={cn(
             "flex items-center space-x-3 px-4 py-3 rounded-xl transition-colors",
@@ -405,7 +403,7 @@ function MobileNavItem({ item, pathname, onClose }: any) {
             {item.children
               .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
               .map((child: any) => (
-              <Link key={child.href} href={child.href} onClick={onClose}>
+              <Link key={child.href} to={child.href} onClick={onClose}>
                 <div className="flex items-center space-x-3 px-4 py-2 rounded-lg hover:bg-dark/50 transition-colors">
                   <child.icon className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">{child.label}</span>
