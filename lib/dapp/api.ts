@@ -17,8 +17,13 @@ if (typeof window !== "undefined") {
 }
 
 // Support both VITE_ (Vite) and NEXT_PUBLIC_ (Next.js) prefixes for compatibility
-const BACKEND_URL = getApiBaseUrl() || 
-  ((import.meta as any).env?.VITE_BACKEND_URL || (import.meta as any).env?.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001/api")
+// On Lovable, getApiBaseUrl() returns empty string to trigger mock data
+// Only use localhost fallback if not on Lovable and no explicit URL is set
+const apiBaseUrl = getApiBaseUrl()
+const BACKEND_URL = apiBaseUrl || 
+  (isLovableEnvironment() 
+    ? "" // Empty string on Lovable triggers mock data
+    : ((import.meta as any).env?.VITE_BACKEND_URL || (import.meta as any).env?.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001/api"))
 const STACKS_API = ((import.meta as any).env?.VITE_STACKS_API || (import.meta as any).env?.NEXT_PUBLIC_STACKS_API || "https://api.testnet.hiro.so")
 const USE_MOCK_DATA = shouldUseMockData()
 

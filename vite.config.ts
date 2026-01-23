@@ -10,10 +10,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     server: {
-      host: "::",
-      port: 8080,
+      host: "::", // Listen on all interfaces (required for Lovable)
+      port: 8080, // Lovable standard port
+      strictPort: false, // Allow port fallback if 8080 is unavailable
       hmr: {
-        overlay: false,
+        overlay: false, // Disable error overlay for cleaner Lovable experience
       },
     },
     plugins: [
