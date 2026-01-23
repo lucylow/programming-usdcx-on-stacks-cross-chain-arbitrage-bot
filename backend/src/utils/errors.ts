@@ -508,6 +508,101 @@ interface MockHealth {
 // Endpoint mapping type
 type EndpointKey = "/health" | "/bot/status" | "/prices" | "/opportunities" | "/trades" | "/performance"
 
+// Helper functions defined before the object to avoid circular references
+const createMockBotStatus = (): MockBotStatus => ({
+  running: false,
+  activeTrades: 0,
+  queueLength: 0,
+  opportunitiesDetected: 0,
+  tradesExecuted: 0,
+  totalProfit: 0,
+  winRate: 0,
+  avgProfit: 0,
+  uptime: 0,
+})
+
+const createMockPrices = (): MockPriceData[] => [
+  {
+    chain: "ethereum",
+    dex: "Uniswap V3",
+    pair: "USDC/ETH",
+    price: 0.00041,
+    liquidity: 45000000,
+    confidence: 0.95,
+    change24h: 0.5,
+    timestamp: Date.now(),
+  },
+  {
+    chain: "stacks",
+    dex: "ALEX",
+    pair: "USDCx/STX",
+    price: 0.52,
+    liquidity: 8500000,
+    confidence: 0.92,
+    change24h: 1.2,
+    timestamp: Date.now(),
+  },
+]
+
+const createMockOpportunities = (): MockOpportunity[] => [
+  {
+    id: `opp_mock_${Date.now()}`,
+    sourceChain: "ethereum",
+    targetChain: "stacks",
+    sourceDex: "Uniswap V3",
+    targetDex: "ALEX",
+    tokenPair: "USDC/ETH",
+    sourcePrice: 1.0,
+    targetPrice: 1.005,
+    spread: 0.5,
+    expectedProfit: 50,
+    confidence: 0.75,
+    status: "active",
+    tradeSize: 10000,
+    detectedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 5 * 60000).toISOString(),
+  },
+]
+
+const createMockTrades = (): MockTrade[] => [
+  {
+    id: `trade_mock_${Date.now()}`,
+    opportunityId: `opp_mock_${Date.now()}`,
+    status: "success",
+    profit: 45.5,
+    roi: 0.00455,
+    executionTime: 3500,
+    gasCost: 12.5,
+    bridgeFee: 15.0,
+    slippage: 0.2,
+    txHashes: {
+      source: `0x${"0".repeat(64)}`,
+      bridge: `0x${"0".repeat(64)}`,
+      target: `0x${"0".repeat(64)}`,
+    },
+    timestamp: Date.now(),
+  },
+]
+
+const createMockPerformance = (): MockPerformance => ({
+  period: "daily",
+  totalTrades: 0,
+  profitableTrades: 0,
+  totalVolume: 0,
+  totalProfit: 0,
+  avgProfitPerTrade: 0,
+  maxProfit: 0,
+  maxLoss: 0,
+  sharpeRatio: 0,
+  winRate: 0,
+})
+
+const createMockHealth = (): MockHealth => ({
+  status: "degraded",
+  timestamp: new Date().toISOString(),
+  message: "Using fallback mock data due to errors",
+})
+
 /**
  * Mock data fallback generator
  * Provides safe fallback data when backend errors occur
@@ -516,114 +611,32 @@ export const MockDataFallback = {
   /**
    * Generate mock bot status
    */
-  botStatus: (): MockBotStatus => ({
-    running: false,
-    activeTrades: 0,
-    queueLength: 0,
-    opportunitiesDetected: 0,
-    tradesExecuted: 0,
-    totalProfit: 0,
-    winRate: 0,
-    avgProfit: 0,
-    uptime: 0,
-  }),
+  botStatus: createMockBotStatus,
 
   /**
    * Generate mock price data
    */
-  prices: (): MockPriceData[] => [
-    {
-      chain: "ethereum",
-      dex: "Uniswap V3",
-      pair: "USDC/ETH",
-      price: 0.00041,
-      liquidity: 45000000,
-      confidence: 0.95,
-      change24h: 0.5,
-      timestamp: Date.now(),
-    },
-    {
-      chain: "stacks",
-      dex: "ALEX",
-      pair: "USDCx/STX",
-      price: 0.52,
-      liquidity: 8500000,
-      confidence: 0.92,
-      change24h: 1.2,
-      timestamp: Date.now(),
-    },
-  ],
+  prices: createMockPrices,
 
   /**
    * Generate mock arbitrage opportunities
    */
-  opportunities: (): MockOpportunity[] => [
-    {
-      id: `opp_mock_${Date.now()}`,
-      sourceChain: "ethereum",
-      targetChain: "stacks",
-      sourceDex: "Uniswap V3",
-      targetDex: "ALEX",
-      tokenPair: "USDC/ETH",
-      sourcePrice: 1.0,
-      targetPrice: 1.005,
-      spread: 0.5,
-      expectedProfit: 50,
-      confidence: 0.75,
-      status: "active",
-      tradeSize: 10000,
-      detectedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 5 * 60000).toISOString(),
-    },
-  ],
+  opportunities: createMockOpportunities,
 
   /**
    * Generate mock trade results
    */
-  trades: (): MockTrade[] => [
-    {
-      id: `trade_mock_${Date.now()}`,
-      opportunityId: `opp_mock_${Date.now()}`,
-      status: "success",
-      profit: 45.5,
-      roi: 0.00455,
-      executionTime: 3500,
-      gasCost: 12.5,
-      bridgeFee: 15.0,
-      slippage: 0.2,
-      txHashes: {
-        source: `0x${"0".repeat(64)}`,
-        bridge: `0x${"0".repeat(64)}`,
-        target: `0x${"0".repeat(64)}`,
-      },
-      timestamp: Date.now(),
-    },
-  ],
+  trades: createMockTrades,
 
   /**
    * Generate mock performance metrics
    */
-  performance: (): MockPerformance => ({
-    period: "daily",
-    totalTrades: 0,
-    profitableTrades: 0,
-    totalVolume: 0,
-    totalProfit: 0,
-    avgProfitPerTrade: 0,
-    maxProfit: 0,
-    maxLoss: 0,
-    sharpeRatio: 0,
-    winRate: 0,
-  }),
+  performance: createMockPerformance,
 
   /**
    * Generate mock health check response
    */
-  health: (): MockHealth => ({
-    status: "degraded",
-    timestamp: new Date().toISOString(),
-    message: "Using fallback mock data due to errors",
-  }),
+  health: createMockHealth,
 
   /**
    * Get mock data based on endpoint pattern
@@ -631,12 +644,12 @@ export const MockDataFallback = {
    */
   getMockDataForEndpoint: <T = unknown>(endpoint: string): T | null => {
     const endpointMap: Record<EndpointKey, () => unknown> = {
-      "/health": MockDataFallback.health,
-      "/bot/status": MockDataFallback.botStatus,
-      "/prices": MockDataFallback.prices,
-      "/opportunities": MockDataFallback.opportunities,
-      "/trades": MockDataFallback.trades,
-      "/performance": MockDataFallback.performance,
+      "/health": createMockHealth,
+      "/bot/status": createMockBotStatus,
+      "/prices": createMockPrices,
+      "/opportunities": createMockOpportunities,
+      "/trades": createMockTrades,
+      "/performance": createMockPerformance,
     }
 
     // Find matching endpoint (supports partial matches for flexibility)
