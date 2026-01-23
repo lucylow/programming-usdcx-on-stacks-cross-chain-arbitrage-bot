@@ -18,7 +18,7 @@ import {
 } from "../components/ui/select"
 
 // @ts-ignore
-import { useStacks } from "../../lib/stacks/StacksProvider"
+import { useStacks } from "@lib/stacks/StacksProvider"
 
 export default function Settings() {
   let stacksData: any = null

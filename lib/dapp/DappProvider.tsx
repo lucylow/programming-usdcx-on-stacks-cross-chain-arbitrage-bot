@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useReducer, useEffect, useCallback, type ReactNode } from "react"
-import { useStacks } from "@/lib/stacks/StacksProvider"
+import { useStacks } from "@lib/stacks/StacksProvider"
 import { dappApi } from "./api"
 import type {
   DappState,

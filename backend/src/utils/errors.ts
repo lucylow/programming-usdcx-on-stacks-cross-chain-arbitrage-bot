@@ -1713,7 +1713,7 @@ export class ErrorNotificationManager {
    */
   private shouldSuppress(error: unknown): boolean {
     const message = getErrorMessage(error).toLowerCase()
-    for (const patternStr of this.suppressedErrors) {
+    for (const patternStr of Array.from(this.suppressedErrors)) {
       // Try to parse as RegExp (format: "/pattern/flags")
       try {
         const match = patternStr.match(/^\/(.+)\/([gimsuy]*)$/)
@@ -1835,7 +1835,7 @@ export class ErrorTransformerRegistry {
 
     const message = getErrorMessage(error).toLowerCase()
     
-    for (const [pattern, transformer] of this.transformers.entries()) {
+    for (const [pattern, transformer] of Array.from(this.transformers.entries())) {
       try {
         const regex = new RegExp(pattern)
         if (regex.test(message)) {
@@ -1886,7 +1886,7 @@ export interface ErrorSuppressionOptions {
  * Error suppressor for handling non-critical errors
  */
 export class ErrorSuppressor {
-  private suppressions: Map<string, number> = new Map()
+  private suppressions: Map<string, { count: number; firstSuppression: number; lastSuppression: number }> = new Map()
   private readonly maxSuppressions: number
   private readonly suppressionWindow: number
   private readonly patterns: (string | RegExp)[]
@@ -1930,22 +1930,43 @@ export class ErrorSuppressor {
 
     const key = getErrorCode(error)
     const now = Date.now()
-    const count = this.suppressions.get(key) || 0
-
-    if (count >= this.maxSuppressions) {
-      // Clean old suppressions
-      this.cleanup()
-      return false
+    
+    // Clean old suppressions first
+    this.cleanup()
+    
+    const existing = this.suppressions.get(key)
+    
+    if (existing) {
+      // Check if we're still within the suppression window
+      if (now - existing.firstSuppression > this.suppressionWindow) {
+        // Window expired, reset count
+        this.suppressions.set(key, { count: 1, firstSuppression: now, lastSuppression: now })
+        return true
+      }
+      
+      // Check if we've exceeded max suppressions
+      if (existing.count >= this.maxSuppressions) {
+        return false
+      }
+      
+      // Increment count
+      this.suppressions.set(key, {
+        count: existing.count + 1,
+        firstSuppression: existing.firstSuppression,
+        lastSuppression: now,
+      })
+      return true
     }
-
-    this.suppressions.set(key, count + 1)
+    
+    // First suppression for this error code
+    this.suppressions.set(key, { count: 1, firstSuppression: now, lastSuppression: now })
     return true
   }
 
   private cleanup(): void {
     const now = Date.now()
-    for (const [key, timestamp] of this.suppressions.entries()) {
-      if (now - timestamp > this.suppressionWindow) {
+    for (const [key, data] of Array.from(this.suppressions.entries())) {
+      if (now - data.firstSuppression > this.suppressionWindow) {
         this.suppressions.delete(key)
       }
     }

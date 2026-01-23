@@ -13,9 +13,9 @@ import { Link } from "react-router-dom"
 // Import providers - they may not be available in all environments
 // Using @ts-ignore to suppress TypeScript errors if providers aren't in the expected location
 // @ts-ignore
-import { useDapp } from "../../lib/dapp/DappProvider"
+import { useDapp } from "@lib/dapp/DappProvider"
 // @ts-ignore
-import { useStacks } from "../../lib/stacks/StacksProvider"
+import { useStacks } from "@lib/stacks/StacksProvider"
 
 export default function BotDashboard() {
   // Try to use DappProvider, fallback to mock data if not available

@@ -17,7 +17,7 @@ import {
 } from "../components/ui/select"
 
 // @ts-ignore
-import { useStacks } from "../../lib/stacks/StacksProvider"
+import { useStacks } from "@lib/stacks/StacksProvider"
 
 interface Token {
   symbol: string

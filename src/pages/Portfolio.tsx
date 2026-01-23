@@ -11,9 +11,9 @@ import { cn } from "@/lib/utils"
 import { Link } from "react-router-dom"
 
 // @ts-ignore
-import { useStacks } from "../../lib/stacks/StacksProvider"
+import { useStacks } from "@lib/stacks/StacksProvider"
 // @ts-ignore
-import { useDapp } from "../../lib/dapp/DappProvider"
+import { useDapp } from "@lib/dapp/DappProvider"
 
 interface Asset {
   symbol: string
