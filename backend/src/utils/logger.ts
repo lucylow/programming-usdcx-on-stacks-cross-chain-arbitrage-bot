@@ -4,6 +4,26 @@ export interface LogContext {
   [key: string]: unknown
 }
 
+/**
+ * Convert an error or unknown value to LogContext format
+ */
+export function toLogContext(error: unknown): LogContext {
+  if (error instanceof Error) {
+    return {
+      error: error.message,
+      name: error.name,
+      stack: error.stack,
+    }
+  }
+  if (error && typeof error === "object") {
+    return error as LogContext
+  }
+  if (typeof error === "string") {
+    return { message: error }
+  }
+  return { value: String(error) }
+}
+
 class Logger {
   private logLevel: LogLevel
   private enabled: boolean
@@ -109,24 +129,3 @@ class Logger {
 }
 
 export const logger = new Logger()
-
-/**
- * Convert an error or unknown value to LogContext format
- */
-export function toLogContext(error: unknown): LogContext {
-  if (error instanceof Error) {
-    return {
-      error: error.message,
-      name: error.name,
-      stack: error.stack,
-    }
-  }
-  if (error && typeof error === "object") {
-    return error as LogContext
-  }
-  if (typeof error === "string") {
-    return { message: error }
-  }
-  return { value: String(error) }
-}
-

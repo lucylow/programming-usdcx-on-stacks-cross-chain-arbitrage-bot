@@ -1224,3 +1224,431 @@ export async function withGracefulDegradation<T>(
   }
 }
 
+// ==================== Additional Error Handling Utilities ====================
+
+/**
+ * Error correlation ID for tracking related errors
+ */
+let correlationIdCounter = 0
+
+/**
+ * Generate a unique correlation ID for error tracking
+ */
+export function generateCorrelationId(): string {
+  return `err_${Date.now()}_${++correlationIdCounter}_${Math.random().toString(36).substr(2, 9)}`
+}
+
+/**
+ * Sanitize error messages to remove sensitive information
+ */
+export function sanitizeErrorMessage(message: string): string {
+  // Remove private keys, API keys, passwords, etc.
+  const sensitivePatterns = [
+    /private[_\s]?key[=:]\s*[a-zA-Z0-9]+/gi,
+    /api[_\s]?key[=:]\s*[a-zA-Z0-9]+/gi,
+    /password[=:]\s*[^\s]+/gi,
+    /secret[=:]\s*[^\s]+/gi,
+    /token[=:]\s*[a-zA-Z0-9]{20,}/gi,
+    /0x[a-fA-F0-9]{64}/g, // Private keys
+    /sk[a-zA-Z0-9]{50,}/g, // Stacks private keys
+  ]
+
+  let sanitized = message
+  for (const pattern of sensitivePatterns) {
+    sanitized = sanitized.replace(pattern, "[REDACTED]")
+  }
+
+  return sanitized
+}
+
+/**
+ * Sanitize error object to remove sensitive data
+ */
+export function sanitizeError(error: unknown): unknown {
+  if (error instanceof Error) {
+    const sanitized = new Error(sanitizeErrorMessage(error.message))
+    sanitized.name = error.name
+    sanitized.stack = error.stack
+    return sanitized
+  }
+
+  if (typeof error === "string") {
+    return sanitizeErrorMessage(error)
+  }
+
+  if (error && typeof error === "object") {
+    const sanitized: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(error)) {
+      if (typeof value === "string") {
+        sanitized[key] = sanitizeErrorMessage(value)
+      } else if (key.toLowerCase().includes("key") || key.toLowerCase().includes("secret") || key.toLowerCase().includes("password")) {
+        sanitized[key] = "[REDACTED]"
+      } else {
+        sanitized[key] = value
+      }
+    }
+    return sanitized
+  }
+
+  return error
+}
+
+/**
+ * Parse error from various sources (HTTP, blockchain, etc.)
+ */
+export function parseError(error: unknown, context?: ErrorContext): BotError {
+  // Already a BotError
+  if (error instanceof BotError) {
+    if (context) {
+      return wrapError(error, context)
+    }
+    return error
+  }
+
+  // HTTP errors
+  if (error && typeof error === "object" && "response" in error) {
+    const httpError = error as { response?: { status?: number; data?: unknown }; message?: string }
+    const status = httpError.response?.status || 500
+    const message = httpError.message || "HTTP request failed"
+    
+    if (status === 429) {
+      const retryAfter = httpError.response?.data && typeof httpError.response.data === "object" && "retryAfter" in httpError.response.data
+        ? Number(httpError.response.data.retryAfter)
+        : undefined
+      return new RateLimitError(message, retryAfter, context)
+    }
+
+    if (status >= 500) {
+      return new NetworkError(message, context)
+    }
+
+    if (status === 401) {
+      return new AuthenticationError(message, context)
+    }
+
+    if (status === 403) {
+      return new AuthorizationError(message, context)
+    }
+
+    if (status >= 400 && status < 500) {
+      return new ValidationError(message, context)
+    }
+  }
+
+  // Network errors
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase()
+    
+    if (message.includes("timeout") || message.includes("timed out")) {
+      return new TimeoutError(error.message, context)
+    }
+
+    if (message.includes("network") || message.includes("econnrefused") || message.includes("enotfound")) {
+      return new NetworkError(error.message, context)
+    }
+
+    if (message.includes("invalid") || message.includes("malformed")) {
+      return new ValidationError(error.message, context)
+    }
+  }
+
+  // Unknown error - wrap it
+  return wrapError(error, context)
+}
+
+/**
+ * Error metrics collector
+ */
+export class ErrorMetrics {
+  private errors: Array<{ timestamp: number; code: ErrorCode; context?: ErrorContext }> = []
+  private readonly maxErrors = 1000
+
+  /**
+   * Record an error
+   */
+  recordError(error: unknown, context?: ErrorContext): void {
+    const code = getErrorCode(error)
+    this.errors.push({ timestamp: Date.now(), code, context })
+    
+    // Keep only recent errors
+    if (this.errors.length > this.maxErrors) {
+      this.errors = this.errors.slice(-this.maxErrors)
+    }
+  }
+
+  /**
+   * Get error statistics
+   */
+  getStats(timeWindowMs: number = 60000): {
+    total: number
+    byCode: Record<ErrorCode, number>
+    recentErrors: Array<{ code: ErrorCode; timestamp: number; context?: ErrorContext }>
+  } {
+    const windowStart = Date.now() - timeWindowMs
+    const recent = this.errors.filter((e) => e.timestamp >= windowStart)
+    
+    const byCode = {} as Record<ErrorCode, number>
+    for (const error of recent) {
+      byCode[error.code] = (byCode[error.code] || 0) + 1
+    }
+
+    return {
+      total: recent.length,
+      byCode,
+      recentErrors: recent.map((e) => ({ code: e.code, timestamp: e.timestamp, context: e.context })),
+    }
+  }
+
+  /**
+   * Clear all metrics
+   */
+  clear(): void {
+    this.errors = []
+  }
+}
+
+/**
+ * Global error metrics instance
+ */
+export const errorMetrics = new ErrorMetrics()
+
+/**
+ * Input validation error helper
+ */
+export class InputValidationError extends ValidationError {
+  public readonly field: string
+  public readonly value: unknown
+  public readonly reason: string
+
+  constructor(field: string, value: unknown, reason: string, context?: ErrorContext) {
+    super(`Invalid input for field '${field}': ${reason}`, { ...context, field, value })
+    this.field = field
+    this.value = value
+    this.reason = reason
+    Object.setPrototypeOf(this, InputValidationError.prototype)
+  }
+}
+
+/**
+ * Validate and throw InputValidationError if invalid
+ */
+export function validateInput<T>(
+  value: T | null | undefined,
+  field: string,
+  validator: (value: T) => boolean,
+  reason: string = "validation failed",
+): asserts value is T {
+  if (value === null || value === undefined) {
+    throw new InputValidationError(field, value, "value is required")
+  }
+
+  if (!validator(value)) {
+    throw new InputValidationError(field, value, reason)
+  }
+}
+
+/**
+ * Safe number parsing with error handling
+ */
+export function safeParseNumber(
+  value: string | number | null | undefined,
+  field: string,
+  options: {
+    min?: number
+    max?: number
+    allowNaN?: boolean
+    allowInfinity?: boolean
+  } = {},
+): number {
+  if (value === null || value === undefined) {
+    throw new InputValidationError(field, value, "value is required")
+  }
+
+  const num = typeof value === "number" ? value : Number.parseFloat(String(value))
+
+  if (Number.isNaN(num) && !options.allowNaN) {
+    throw new InputValidationError(field, value, "value is not a valid number")
+  }
+
+  if (!Number.isFinite(num) && !options.allowInfinity) {
+    throw new InputValidationError(field, value, "value is not finite")
+  }
+
+  if (options.min !== undefined && num < options.min) {
+    throw new InputValidationError(field, value, `value must be >= ${options.min}`)
+  }
+
+  if (options.max !== undefined && num > options.max) {
+    throw new InputValidationError(field, value, `value must be <= ${options.max}`)
+  }
+
+  return num
+}
+
+/**
+ * Safe integer parsing with error handling
+ */
+export function safeParseInt(
+  value: string | number | null | undefined,
+  field: string,
+  options: {
+    min?: number
+    max?: number
+    radix?: number
+  } = {},
+): number {
+  if (value === null || value === undefined) {
+    throw new InputValidationError(field, value, "value is required")
+  }
+
+  const num = typeof value === "number" ? value : Number.parseInt(String(value), options.radix || 10)
+
+  if (Number.isNaN(num)) {
+    throw new InputValidationError(field, value, "value is not a valid integer")
+  }
+
+  if (options.min !== undefined && num < options.min) {
+    throw new InputValidationError(field, value, `value must be >= ${options.min}`)
+  }
+
+  if (options.max !== undefined && num > options.max) {
+    throw new InputValidationError(field, value, `value must be <= ${options.max}`)
+  }
+
+  return num
+}
+
+/**
+ * Safe string validation
+ */
+export function safeParseString(
+  value: unknown,
+  field: string,
+  options: {
+    minLength?: number
+    maxLength?: number
+    pattern?: RegExp
+    required?: boolean
+  } = {},
+): string {
+  if (value === null || value === undefined) {
+    if (options.required !== false) {
+      throw new InputValidationError(field, value, "value is required")
+    }
+    return ""
+  }
+
+  const str = String(value)
+
+  if (options.minLength !== undefined && str.length < options.minLength) {
+    throw new InputValidationError(field, value, `value must be at least ${options.minLength} characters`)
+  }
+
+  if (options.maxLength !== undefined && str.length > options.maxLength) {
+    throw new InputValidationError(field, value, `value must be at most ${options.maxLength} characters`)
+  }
+
+  if (options.pattern && !options.pattern.test(str)) {
+    throw new InputValidationError(field, value, "value does not match required pattern")
+  }
+
+  return str
+}
+
+/**
+ * Safe array validation
+ */
+export function safeParseArray<T>(
+  value: unknown,
+  field: string,
+  validator?: (item: unknown, index: number) => T,
+  options: {
+    minLength?: number
+    maxLength?: number
+    required?: boolean
+  } = {},
+): T[] {
+  if (value === null || value === undefined) {
+    if (options.required !== false) {
+      throw new InputValidationError(field, value, "value is required")
+    }
+    return []
+  }
+
+  if (!Array.isArray(value)) {
+    throw new InputValidationError(field, value, "value must be an array")
+  }
+
+  if (options.minLength !== undefined && value.length < options.minLength) {
+    throw new InputValidationError(field, value, `array must have at least ${options.minLength} items`)
+  }
+
+  if (options.maxLength !== undefined && value.length > options.maxLength) {
+    throw new InputValidationError(field, value, `array must have at most ${options.maxLength} items`)
+  }
+
+  if (validator) {
+    return value.map((item, index) => {
+      try {
+        return validator(item, index)
+      } catch (error) {
+        throw new InputValidationError(field, item, `item at index ${index} is invalid: ${getErrorMessage(error)}`)
+      }
+    })
+  }
+
+  return value as T[]
+}
+
+/**
+ * Execute with error correlation tracking
+ */
+export async function withErrorCorrelation<T>(
+  fn: () => Promise<T>,
+  correlationId?: string,
+): Promise<T> {
+  const id = correlationId || generateCorrelationId()
+  
+  try {
+    return await fn()
+  } catch (error) {
+    // Add correlation ID to error context by wrapping the error
+    const contextWithCorrelation = { correlationId: id }
+    if (error instanceof BotError) {
+      // Merge existing context with correlation ID
+      const mergedContext = error.context 
+        ? { ...error.context, ...contextWithCorrelation }
+        : contextWithCorrelation
+      const wrappedError = wrapError(error, mergedContext)
+      errorMetrics.recordError(wrappedError, mergedContext)
+      throw wrappedError
+    }
+    
+    errorMetrics.recordError(error, contextWithCorrelation)
+    throw error
+  }
+}
+
+/**
+ * Retry with correlation tracking
+ */
+export async function retryWithCorrelation<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number
+    initialDelay?: number
+    maxDelay?: number
+    multiplier?: number
+    correlationId?: string
+  } = {},
+): Promise<T> {
+  const correlationId = options.correlationId || generateCorrelationId()
+  
+  return retryWithTracking(fn, {
+    ...options,
+    onRetry: (attempt, error) => {
+      errorMetrics.recordError(error, { correlationId, attempt })
+    },
+  })
+}
+

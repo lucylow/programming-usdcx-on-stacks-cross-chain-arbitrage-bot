@@ -1,6 +1,16 @@
 import { Request, Response, NextFunction } from "express"
 import { logger } from "../utils/logger"
-import { BotError, getErrorMessage, getErrorCode, isRetryableError } from "../utils/errors"
+import {
+  BotError,
+  getErrorMessage,
+  getErrorCode,
+  isRetryableError,
+  generateCorrelationId,
+  sanitizeError,
+  parseError,
+  errorMetrics,
+  createErrorContext,
+} from "../utils/errors"
 
 /**
  * Standardized API response format
@@ -87,7 +97,14 @@ export function asyncHandler(
   fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>,
 ) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    Promise.resolve(fn(req, res, next)).catch(next)
+    Promise.resolve(fn(req, res, next)).catch((error) => {
+      // Ensure error is properly handled
+      if (!next) {
+        errorHandler(error, req, res, () => {})
+      } else {
+        next(error)
+      }
+    })
   }
 }
 

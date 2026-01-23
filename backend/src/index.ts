@@ -13,7 +13,15 @@ import {
 } from "./web3"
 import { ethers } from "ethers"
 import { errorHandler, asyncHandler, successResponse } from "./middleware/errorHandler"
-import { ValidationError } from "./utils/errors"
+import {
+  ValidationError,
+  ConfigurationError,
+  NetworkError,
+  withErrorBoundary,
+  withErrorCorrelation,
+  parseError,
+  errorMetrics,
+} from "./utils/errors"
 import { requestLogger } from "./middleware/requestLogger"
 import { rateLimiter } from "./middleware/rateLimiter"
 import { validateRequest, validators } from "./middleware/validation"
@@ -427,51 +435,143 @@ app.get("/api/web3/multi-chain/balance", asyncHandler(async (req: Request, res: 
 }))
 
 async function startBot() {
-  try {
+  return withErrorCorrelation(async () => {
     logger.info("🚀 Starting Cross-Chain Arbitrage Bot...")
 
-    // Validate configuration
-    validateConfig()
-    logger.info("✅ Configuration validated")
+    // Validate configuration with error handling
+    try {
+      validateConfig()
+      logger.info("✅ Configuration validated")
+    } catch (error) {
+      const parsedError = parseError(error, { operation: "config_validation" })
+      logger.error("❌ Configuration validation failed:", parsedError)
+      throw new ConfigurationError(
+        `Configuration validation failed: ${parsedError.message}`,
+        { originalError: parsedError },
+      )
+    }
 
-    // Start price oracle
-    await priceOracle.start()
-    logger.info("✅ Price Oracle started")
+    // Start price oracle with error boundary
+    try {
+      await withErrorBoundary(
+        () => priceOracle.start(),
+        {
+          maxRetries: 3,
+          retryDelay: 2000,
+          onError: (error) => {
+            logger.warn("Price Oracle startup error, retrying...", error)
+          },
+        },
+      )
+      logger.info("✅ Price Oracle started")
+    } catch (error) {
+      const parsedError = parseError(error, { operation: "price_oracle_start" })
+      logger.error("❌ Failed to start Price Oracle:", parsedError)
+      throw parsedError
+    }
 
-    // Start arbitrage engine
-    await arbitrageEngine.start()
-    logger.info("✅ Arbitrage Engine started")
+    // Start arbitrage engine with error boundary
+    try {
+      await withErrorBoundary(
+        () => arbitrageEngine.start(),
+        {
+          maxRetries: 3,
+          retryDelay: 2000,
+          onError: (error) => {
+            logger.warn("Arbitrage Engine startup error, retrying...", error)
+          },
+        },
+      )
+      logger.info("✅ Arbitrage Engine started")
+    } catch (error) {
+      const parsedError = parseError(error, { operation: "arbitrage_engine_start" })
+      logger.error("❌ Failed to start Arbitrage Engine:", parsedError)
+      throw parsedError
+    }
 
     logger.info("🎉 Bot initialization complete")
+  })
+}
+
+async function shutdown(signal?: string) {
+  logger.info(`🛑 Shutting down${signal ? ` (${signal})` : ""}...`)
+
+  try {
+    // Stop services with error isolation
+    const shutdownTasks = [
+      () => {
+        try {
+          arbitrageEngine.stop()
+          logger.info("✅ Arbitrage Engine stopped")
+        } catch (error) {
+          logger.error("Error stopping Arbitrage Engine:", error)
+        }
+      },
+      () => {
+        try {
+          priceOracle.stop()
+          logger.info("✅ Price Oracle stopped")
+        } catch (error) {
+          logger.error("Error stopping Price Oracle:", error)
+        }
+      },
+      async () => {
+        try {
+          await web3DataProvider.cleanup()
+          logger.info("✅ Web3 services cleaned up")
+        } catch (error) {
+          logger.error("Error cleaning up Web3 services:", error)
+        }
+      },
+    ]
+
+    // Execute shutdown tasks in parallel with error isolation
+    await Promise.all(shutdownTasks.map((task) => Promise.resolve(task()).catch((error) => {
+      logger.error("Shutdown task error:", error)
+    })))
+
+    // Log error metrics before shutdown
+    const errorStats = errorMetrics.getStats(3600000) // Last hour
+    if (errorStats.total > 0) {
+      logger.info("Error statistics:", errorStats)
+    }
+
+    logger.info("👋 Shutdown complete")
   } catch (error) {
-    logger.error("❌ Failed to start bot:", error)
-    process.exit(1)
+    logger.error("Error during shutdown:", error)
+  } finally {
+    process.exit(0)
   }
 }
 
-async function shutdown() {
-  logger.info("🛑 Shutting down...")
+// Handle uncaught exceptions
+process.on("uncaughtException", (error) => {
+  const parsedError = parseError(error, { type: "uncaught_exception" })
+  errorMetrics.recordError(parsedError)
+  logger.error("Uncaught exception:", parsedError)
+  shutdown("uncaughtException").catch(() => {
+    process.exit(1)
+  })
+})
 
-  arbitrageEngine.stop()
-  priceOracle.stop()
-  
-  // Cleanup Web3 services
-  await web3DataProvider.cleanup()
+// Handle unhandled promise rejections
+process.on("unhandledRejection", (reason, promise) => {
+  const parsedError = parseError(reason, { type: "unhandled_rejection" })
+  errorMetrics.recordError(parsedError)
+  logger.error("Unhandled promise rejection:", { error: parsedError, promise })
+  // Don't exit on unhandled rejection, but log it
+})
 
-  logger.info("👋 Shutdown complete")
-  process.exit(0)
-}
-
-process.on("SIGTERM", shutdown)
-process.on("SIGINT", shutdown)
+process.on("SIGTERM", () => shutdown("SIGTERM"))
+process.on("SIGINT", () => shutdown("SIGINT"))
 
 // Error handler must be last
 app.use(errorHandler)
 
-// Start server
+// Start server with error handling
 const PORT = config.api.port
 
-app.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
   logger.info(`✅ Backend API server running on port ${PORT}`)
   logger.info(`📊 Dashboard: http://localhost:${PORT}/api/bot/status`)
   logger.info(`🔍 Health Check: http://localhost:${PORT}/api/health`)
@@ -481,8 +581,31 @@ app.listen(PORT, async () => {
   logger.info(`💰 Price Feed: http://localhost:${PORT}/api/web3/price/USDC`)
   logger.info(`🔗 Multi-Chain: http://localhost:${PORT}/api/web3/chains/metrics`)
 
-  // Start the bot
-  await startBot()
+  // Start the bot with error handling
+  try {
+    await startBot()
+  } catch (error) {
+    const parsedError = parseError(error, { operation: "bot_startup" })
+    logger.error("❌ Failed to start bot:", parsedError)
+    errorMetrics.recordError(parsedError)
+    
+    // Give time for error logging, then exit
+    setTimeout(() => {
+      process.exit(1)
+    }, 1000)
+  }
+})
+
+// Handle server errors
+server.on("error", (error) => {
+  const parsedError = parseError(error, { operation: "server_startup" })
+  errorMetrics.recordError(parsedError)
+  logger.error("Server error:", parsedError)
+  
+  if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
+    logger.error(`Port ${PORT} is already in use`)
+    process.exit(1)
+  }
 })
 
 export default app

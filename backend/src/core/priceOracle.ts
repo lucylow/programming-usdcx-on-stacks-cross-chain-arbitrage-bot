@@ -1,6 +1,16 @@
 import axios from "axios"
 import { config } from "../config"
 import { logger } from "../utils/logger"
+import {
+  PriceOracleError,
+  NetworkError,
+  ValidationError,
+  withTimeout,
+  withErrorBoundary,
+  parseError,
+  safeParseNumber,
+  InputValidationError,
+} from "../utils/errors"
 
 export interface PriceData {
   chain: "ethereum" | "stacks"
@@ -62,12 +72,26 @@ export class PriceOracle {
   async start(): Promise<void> {
     logger.info("Starting Price Oracle...")
 
-    // Initial price fetch
-    await this.updateAllPrices()
+    try {
+      // Initial price fetch with timeout and error handling
+      await withTimeout(
+        () => this.updateAllPrices(),
+        30000, // 30 second timeout
+        "Price Oracle initial update timed out",
+      )
+    } catch (error) {
+      const parsedError = parseError(error, { operation: "price_oracle_start" })
+      logger.warn("Initial price update failed, continuing with periodic updates:", parsedError)
+      // Don't throw - allow periodic updates to retry
+    }
 
-    // Start periodic updates
+    // Start periodic updates with error isolation
     this.updateInterval = setInterval(() => {
-      this.updateAllPrices()
+      // Use error boundary to prevent interval from crashing
+      this.updateAllPrices().catch((error) => {
+        const parsedError = parseError(error, { operation: "periodic_price_update" })
+        logger.error("Periodic price update failed:", parsedError)
+      })
     }, 2000) // Update every 2 seconds
 
     logger.info("Price Oracle started successfully")
@@ -83,29 +107,74 @@ export class PriceOracle {
 
   private async updateAllPrices(): Promise<void> {
     try {
-      // Update Ethereum DEX prices
-      await Promise.all(this.ethDexes.flatMap((dex) => dex.pairs.map((pair) => this.updateEthPrice(dex.name, pair))))
-
-      // Update Stacks DEX prices
-      await Promise.all(
-        this.stacksDexes.flatMap((dex) => dex.pairs.map((pair) => this.updateStacksPrice(dex.name, pair))),
+      // Update Ethereum DEX prices with error isolation
+      const ethUpdates = this.ethDexes.flatMap((dex) =>
+        dex.pairs.map((pair) =>
+          this.updateEthPrice(dex.name, pair).catch((error) => {
+            const parsedError = parseError(error, { chain: "ethereum", dex: dex.name, pair })
+            logger.error(`Failed to update ${dex.name} ${pair} price:`, parsedError)
+            // Continue with other updates
+          }),
+        ),
       )
+
+      // Update Stacks DEX prices with error isolation
+      const stacksUpdates = this.stacksDexes.flatMap((dex) =>
+        dex.pairs.map((pair) =>
+          this.updateStacksPrice(dex.name, pair).catch((error) => {
+            const parsedError = parseError(error, { chain: "stacks", dex: dex.name, pair })
+            logger.error(`Failed to update ${dex.name} ${pair} price:`, parsedError)
+            // Continue with other updates
+          }),
+        ),
+      )
+
+      // Execute all updates in parallel, errors are isolated
+      await Promise.all([...ethUpdates, ...stacksUpdates])
     } catch (error) {
-      logger.error("Error updating prices:", error)
+      const parsedError = parseError(error, { operation: "update_all_prices" })
+      logger.error("Error updating prices:", parsedError)
+      throw new PriceOracleError("Failed to update all prices", undefined, parsedError.context)
     }
   }
 
   private async updateEthPrice(dexName: string, pair: string): Promise<void> {
     try {
-      const price = await this.fetchEthPrice(dexName, pair)
-      const liquidity = await this.fetchEthLiquidity(dexName, pair)
+      // Validate inputs
+      if (!dexName || !pair) {
+        throw new InputValidationError("dexName or pair", { dexName, pair }, "both are required")
+      }
+
+      // Fetch price with timeout
+      const price = await withTimeout(
+        () => this.fetchEthPrice(dexName, pair),
+        10000, // 10 second timeout
+        `Price fetch timeout for ${dexName} ${pair}`,
+      )
+
+      // Validate price
+      if (!Number.isFinite(price) || price <= 0) {
+        throw new ValidationError(`Invalid price value: ${price}`, { dexName, pair, price })
+      }
+
+      // Fetch liquidity with timeout
+      const liquidity = await withTimeout(
+        () => this.fetchEthLiquidity(dexName, pair),
+        10000,
+        `Liquidity fetch timeout for ${dexName} ${pair}`,
+      )
+
+      // Validate liquidity
+      if (!Number.isFinite(liquidity) || liquidity < 0) {
+        throw new ValidationError(`Invalid liquidity value: ${liquidity}`, { dexName, pair, liquidity })
+      }
 
       const priceData: PriceData = {
         chain: "ethereum",
         dex: dexName,
         pair,
-        price,
-        liquidity,
+        price: safeParseNumber(price, "price", { min: 0 }),
+        liquidity: safeParseNumber(liquidity, "liquidity", { min: 0 }),
         timestamp: Date.now(),
         confidence: this.calculateConfidence(liquidity),
         source: "on-chain",
@@ -113,7 +182,13 @@ export class PriceOracle {
 
       this.prices.set(`${dexName}:${pair}`, priceData)
     } catch (error) {
-      logger.error(`Error updating ${dexName} ${pair} price:`, error)
+      const parsedError = parseError(error, { chain: "ethereum", dex: dexName, pair })
+      logger.error(`Error updating ${dexName} ${pair} price:`, parsedError)
+      throw new PriceOracleError(
+        `Failed to update ${dexName} ${pair} price: ${parsedError.message}`,
+        dexName,
+        parsedError.context,
+      )
     }
   }
 
@@ -142,15 +217,30 @@ export class PriceOracle {
     }
 
     const poolAddress = poolAddresses[pair]
-    if (!poolAddress) return 1.0
+    if (!poolAddress) {
+      logger.warn(`No pool address found for pair: ${pair}`)
+      return 1.0
+    }
 
     try {
-      // Query pool contract for current price
+      // Query pool contract for current price with timeout
       // Implementation would use ethers.js to call slot0()
-      return 1.0 // Placeholder
+      return await withTimeout(
+        async () => {
+          // Placeholder - would query actual contract
+          return 1.0
+        },
+        5000,
+        `Uniswap V3 price query timeout for ${pair}`,
+      )
     } catch (error) {
-      logger.error(`Error fetching Uniswap V3 price for ${pair}:`, error)
-      return 1.0
+      const parsedError = parseError(error, { dex: "uniswap_v3", pair })
+      logger.error(`Error fetching Uniswap V3 price for ${pair}:`, parsedError)
+      throw new PriceOracleError(
+        `Failed to fetch Uniswap V3 price for ${pair}: ${parsedError.message}`,
+        "uniswap_v3",
+        parsedError.context,
+      )
     }
   }
 
@@ -166,15 +256,41 @@ export class PriceOracle {
 
   private async updateStacksPrice(dexName: string, pair: string): Promise<void> {
     try {
-      const price = await this.fetchStacksPrice(dexName, pair)
-      const liquidity = await this.fetchStacksLiquidity(dexName, pair)
+      // Validate inputs
+      if (!dexName || !pair) {
+        throw new InputValidationError("dexName or pair", { dexName, pair }, "both are required")
+      }
+
+      // Fetch price with timeout
+      const price = await withTimeout(
+        () => this.fetchStacksPrice(dexName, pair),
+        10000, // 10 second timeout
+        `Price fetch timeout for ${dexName} ${pair}`,
+      )
+
+      // Validate price
+      if (!Number.isFinite(price) || price <= 0) {
+        throw new ValidationError(`Invalid price value: ${price}`, { dexName, pair, price })
+      }
+
+      // Fetch liquidity with timeout
+      const liquidity = await withTimeout(
+        () => this.fetchStacksLiquidity(dexName, pair),
+        10000,
+        `Liquidity fetch timeout for ${dexName} ${pair}`,
+      )
+
+      // Validate liquidity
+      if (!Number.isFinite(liquidity) || liquidity < 0) {
+        throw new ValidationError(`Invalid liquidity value: ${liquidity}`, { dexName, pair, liquidity })
+      }
 
       const priceData: PriceData = {
         chain: "stacks",
         dex: dexName,
         pair,
-        price,
-        liquidity,
+        price: safeParseNumber(price, "price", { min: 0 }),
+        liquidity: safeParseNumber(liquidity, "liquidity", { min: 0 }),
         timestamp: Date.now(),
         confidence: this.calculateConfidence(liquidity),
         source: "on-chain",
@@ -182,7 +298,13 @@ export class PriceOracle {
 
       this.prices.set(`${dexName}:${pair}`, priceData)
     } catch (error) {
-      logger.error(`Error updating ${dexName} ${pair} price:`, error)
+      const parsedError = parseError(error, { chain: "stacks", dex: dexName, pair })
+      logger.error(`Error updating ${dexName} ${pair} price:`, parsedError)
+      throw new PriceOracleError(
+        `Failed to update ${dexName} ${pair} price: ${parsedError.message}`,
+        dexName,
+        parsedError.context,
+      )
     }
   }
 
@@ -201,12 +323,41 @@ export class PriceOracle {
 
   private async getAlexPrice(pair: string): Promise<number> {
     try {
-      // Query ALEX DEX API or contract
-      const response = await axios.get(`https://api.alexlab.co/v1/pools/${pair}`)
-      return response.data.price || 1.0
+      // Query ALEX DEX API or contract with timeout and error handling
+      const response = await axios.get(`https://api.alexlab.co/v1/pools/${pair}`, {
+        timeout: 5000, // 5 second timeout
+        validateStatus: (status) => status >= 200 && status < 300,
+      })
+
+      if (!response.data || typeof response.data.price !== "number") {
+        throw new ValidationError(`Invalid response format from ALEX API for ${pair}`, { pair, response: response.data })
+      }
+
+      const price = response.data.price
+      if (!Number.isFinite(price) || price <= 0) {
+        throw new ValidationError(`Invalid price from ALEX API: ${price}`, { pair, price })
+      }
+
+      return price
     } catch (error) {
-      logger.error(`Error fetching ALEX price for ${pair}:`, error)
-      return 1.0
+      const parsedError = parseError(error, { dex: "alex", pair })
+      
+      // If it's a network/timeout error, throw it
+      if (parsedError instanceof NetworkError || parsedError instanceof TimeoutError) {
+        throw new PriceOracleError(
+          `Network error fetching ALEX price for ${pair}: ${parsedError.message}`,
+          "alex",
+          parsedError.context,
+        )
+      }
+
+      // For other errors, log and throw
+      logger.error(`Error fetching ALEX price for ${pair}:`, parsedError)
+      throw new PriceOracleError(
+        `Failed to fetch ALEX price for ${pair}: ${parsedError.message}`,
+        "alex",
+        parsedError.context,
+      )
     }
   }
 
@@ -234,9 +385,20 @@ export class PriceOracle {
   }
 
   private calculateConfidence(liquidity: number): number {
+    // Validate input
+    if (!Number.isFinite(liquidity) || liquidity < 0) {
+      logger.warn(`Invalid liquidity for confidence calculation: ${liquidity}, using default 0.5`)
+      return 0.5
+    }
+
     // Higher liquidity = higher confidence
     const minLiquidity = 100000
     const maxLiquidity = 10000000
+
+    // Avoid division by zero
+    if (maxLiquidity <= minLiquidity) {
+      return 0.5
+    }
 
     const normalized = Math.min(Math.max((liquidity - minLiquidity) / (maxLiquidity - minLiquidity), 0), 1)
 
@@ -311,6 +473,19 @@ export class PriceOracle {
     direction: "eth_to_stacks" | "stacks_to_eth",
     tradeSize: number,
   ): number {
+    // Validate inputs
+    if (!Number.isFinite(ethPrice.price) || ethPrice.price <= 0) {
+      throw new ValidationError(`Invalid ethPrice: ${ethPrice.price}`, { ethPrice })
+    }
+
+    if (!Number.isFinite(stacksPrice.price) || stacksPrice.price <= 0) {
+      throw new ValidationError(`Invalid stacksPrice: ${stacksPrice.price}`, { stacksPrice })
+    }
+
+    if (!Number.isFinite(tradeSize) || tradeSize <= 0) {
+      throw new ValidationError(`Invalid tradeSize: ${tradeSize}`, { tradeSize })
+    }
+
     const priceDiff = Math.abs(ethPrice.price - stacksPrice.price)
     const grossProfit = priceDiff * tradeSize
 
@@ -322,7 +497,10 @@ export class PriceOracle {
 
     const totalCosts = gasCost + bridgeFee + dexFees + slippageCost
 
-    return Math.max(0, grossProfit - totalCosts)
+    const profit = grossProfit - totalCosts
+    
+    // Ensure non-negative profit
+    return Math.max(0, Number.isFinite(profit) ? profit : 0)
   }
 
   getStats() {

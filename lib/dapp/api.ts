@@ -22,8 +22,9 @@ class DappApi {
   constructor() {
     this.backendUrl = BACKEND_URL
     this.stacksApi = STACKS_API
-    // Use mock data if backend is not available
-    this.useMockData = (import.meta.env.VITE_USE_MOCK_DATA || import.meta.env.NEXT_PUBLIC_USE_MOCK_DATA) === "true"
+    // Always enable mock data fallback for Lovable compatibility
+    // Can be explicitly disabled via env var if needed
+    this.useMockData = (import.meta.env.VITE_USE_MOCK_DATA || import.meta.env.NEXT_PUBLIC_USE_MOCK_DATA) !== "false"
   }
 
   private async fetchBackend<T>(endpoint: string, options?: RequestInit, retries = 3): Promise<T> {
@@ -55,17 +56,13 @@ class DappApi {
             // Ignore JSON parse errors
           }
 
-          // Don't retry on client errors (4xx)
+          // Don't retry on client errors (4xx) - always fallback to mock data
           if (response.status >= 400 && response.status < 500) {
-            // Fall back to mock data if enabled
-            if (this.useMockData) {
-              console.warn(`Backend error, using mock data: ${errorMessage}`)
-              return this.getMockData<T>(endpoint)
-            }
-            throw new Error(errorMessage)
+            console.warn(`Backend error (${response.status}), using mock data fallback: ${errorMessage}`)
+            return this.getMockData<T>(endpoint)
           }
 
-          // Retry on server errors (5xx)
+          // Retry on server errors (5xx), but fallback after retries
           throw new Error(errorMessage)
         }
 

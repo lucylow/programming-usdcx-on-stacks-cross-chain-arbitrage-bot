@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Bot, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StacksWalletButton } from "@/components/stacks/StacksWalletButton";
 
 const navLinks = [
   { href: "#problem", label: "Problem" },
@@ -50,7 +51,8 @@ export function Header() {
             ))}
           </div>
 
-          <div className="hidden md:block">
+          <div className="hidden md:flex items-center gap-3">
+            <StacksWalletButton />
             <Button asChild className="bg-gradient-to-r from-primary to-primary-dark hover:opacity-90 transition-opacity">
               <a href="#demo">Try Demo</a>
             </Button>
@@ -82,7 +84,10 @@ export function Header() {
                   {link.label}
                 </a>
               ))}
-              <Button asChild className="mt-2 bg-gradient-to-r from-primary to-primary-dark">
+              <div className="mt-2">
+                <StacksWalletButton />
+              </div>
+              <Button asChild className="bg-gradient-to-r from-primary to-primary-dark">
                 <a href="#demo">Try Demo</a>
               </Button>
             </div>
