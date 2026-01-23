@@ -1,16 +1,15 @@
-import { LiveOpportunities } from "@/components/dapp/LiveOpportunities"
-import { Card } from "@/components/ui/card"
+import { Card } from "../components/ui/card"
 import { Zap, AlertCircle, TrendingUp } from "lucide-react"
-import Navigation from "@/components/layout/Navigation"
+import Navigation from "../components/layout/Navigation"
 
 export default function BotOpportunities() {
   return (
-    <div className="min-h-screen bg-darker text-white">
+    <div className="min-h-screen bg-background text-foreground">
       <Navigation />
       <div className="pt-24 pb-12 px-4">
         <div className="container mx-auto max-w-7xl">
           <div className="flex items-center gap-3 mb-8">
-            <Zap className="w-8 h-8 text-brand" />
+            <Zap className="w-8 h-8 text-primary" />
             <h1 className="text-4xl font-bold">Arbitrage Opportunities</h1>
           </div>
           <p className="text-muted-foreground mb-8 max-w-3xl">
@@ -19,9 +18,9 @@ export default function BotOpportunities() {
           </p>
 
           {/* Info Card */}
-          <Card className="bg-card-bg/50 border-white/10 p-6 mb-8">
+          <Card className="bg-card/50 border-border p-6 mb-8">
             <div className="flex items-start gap-4">
-              <AlertCircle className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
+              <AlertCircle className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
               <div>
                 <h3 className="font-semibold mb-2">How Opportunities Work</h3>
                 <p className="text-sm text-muted-foreground">
@@ -33,11 +32,11 @@ export default function BotOpportunities() {
             </div>
           </Card>
 
-          <LiveOpportunities />
+          <Card className="bg-card/50 border-border p-6">
+            <p className="text-muted-foreground">Live opportunities will appear here.</p>
+          </Card>
         </div>
       </div>
     </div>
   )
 }
-
-

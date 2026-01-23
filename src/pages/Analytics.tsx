@@ -1,10 +1,11 @@
-import { Card } from "@/components/ui/card"
+import { Card } from "../components/ui/card"
 import { BarChart3, TrendingUp, Shield, Activity, DollarSign, Clock } from "lucide-react"
-import Navigation from "@/components/layout/Navigation"
-import { useDapp } from "@/lib/dapp/DappProvider"
+import Navigation from "../components/layout/Navigation"
 
 export default function Analytics() {
-  const { performance, botStatus, isLoading } = useDapp()
+  const isLoading = false;
+  const performance = { totalProfit: 12500, totalTrades: 156 };
+  const botStatus = { winRate: 0.87 };
 
   return (
     <div className="min-h-screen bg-darker text-white">

@@ -20,10 +20,7 @@ import {
   FileText,
   HelpCircle,
 } from "lucide-react"
-// Note: WalletConnect is in root components/ directory
-// Using StacksWalletButton from src/components instead
-import { StacksWalletButton } from "@/components/stacks/StacksWalletButton"
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface NavItem {
   label: string
@@ -212,7 +209,6 @@ export default function Navigation() {
               </motion.button>
 
               <NotificationButton />
-              <StacksWalletButton />
 
               <motion.button
                 whileHover={{ scale: 1.05 }}
