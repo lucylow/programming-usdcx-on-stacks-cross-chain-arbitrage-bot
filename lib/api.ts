@@ -1,6 +1,14 @@
 // API client for backend integration
 // Support both VITE_ (Vite) and NEXT_PUBLIC_ (Next.js) prefixes for compatibility
-const API_BASE_URL = (import.meta.env.VITE_API_URL || import.meta.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api")
+import { getApiBaseUrl, isLovableEnvironment, logLovableInfo, shouldUseMockData } from "./utils/lovable"
+
+// Initialize Lovable logging on module load
+if (typeof window !== "undefined") {
+  logLovableInfo()
+}
+
+const API_BASE_URL = getApiBaseUrl()
+const USE_MOCK_DATA = shouldUseMockData()
 
 export interface BotStatus {
   running: boolean
@@ -83,17 +91,24 @@ class ApiClient {
   /**
    * Generate mock data for fallback when API fails
    * Ensures frontend works on Lovable even without backend
+   * Enhanced with more realistic data patterns
    */
   private getMockData<T>(endpoint: string): T {
+    const isLovable = isLovableEnvironment()
+    const timestamp = Date.now()
     const mockData: Record<string, unknown> = {
       "/bot/status": {
         running: true,
-        activeTrades: 2,
-        queueLength: 5,
-        opportunitiesDetected: 147,
-        tradesExecuted: 89,
-        totalProfit: 12450.67,
-        winRate: 0.847,
+        activeTrades: Math.floor(Math.random() * 3) + 1,
+        queueLength: Math.floor(Math.random() * 8) + 2,
+        opportunitiesDetected: 147 + Math.floor(Math.random() * 20),
+        tradesExecuted: 89 + Math.floor(Math.random() * 10),
+        totalProfit: 12450.67 + (Math.random() * 100 - 50),
+        winRate: 0.847 + (Math.random() * 0.05 - 0.025),
+        ...(isLovable && {
+          mode: "mock",
+          lastUpdate: new Date(timestamp).toISOString(),
+        }),
       },
       "/prices": [
         {
@@ -162,6 +177,12 @@ class ApiClient {
   }
 
   private async fetch<T>(endpoint: string, options?: RequestInit, retries = 3): Promise<T> {
+    // On Lovable with mock data enabled, skip network requests
+    if (USE_MOCK_DATA && isLovableEnvironment()) {
+      console.log(`[Lovable] Using mock data for: ${endpoint}`)
+      return this.getMockData<T>(endpoint)
+    }
+
     let lastError: Error | null = null
 
     for (let attempt = 1; attempt <= retries; attempt++) {

@@ -7,7 +7,9 @@ export const APP_DESCRIPTION = "AI-Powered Cross-Chain Arbitrage Bot"
 
 // API Configuration
 // Support both VITE_ (Vite) and NEXT_PUBLIC_ (Next.js) prefixes for compatibility
-export const API_BASE_URL = (import.meta.env.VITE_API_URL || import.meta.env.NEXT_PUBLIC_API_URL || "http://localhost:3001")
+// Uses Lovable-aware URL resolution
+import { getApiBaseUrl } from "./utils/lovable"
+export const API_BASE_URL = getApiBaseUrl() || (import.meta.env.VITE_API_URL || import.meta.env.NEXT_PUBLIC_API_URL || "http://localhost:3001")
 
 // Network Configuration
 export const NETWORKS = {

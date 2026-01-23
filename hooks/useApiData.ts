@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from "react"
 import { API_BASE_URL } from "@/lib/constants"
+import { getApiBaseUrl, isLovableEnvironment, shouldUseMockData } from "@/lib/utils/lovable"
+
+const USE_MOCK_DATA = shouldUseMockData()
+const API_URL = getApiBaseUrl() || API_BASE_URL
 
 interface UseApiDataOptions {
   autoRefresh?: boolean
@@ -71,11 +75,21 @@ export function useApiData<T>(endpoint: string, options: UseApiDataOptions = {})
     setLoading(true)
     setError(null)
 
+    // On Lovable with mock data enabled, skip network requests
+    if (USE_MOCK_DATA && isLovableEnvironment()) {
+      console.log(`[Lovable] Using mock data for: ${endpoint}`)
+      const mockData = getMockData<T>(endpoint)
+      setData(mockData)
+      setError(null)
+      setLoading(false)
+      return
+    }
+
     try {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
 
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      const response = await fetch(`${API_URL}${endpoint}`, {
         signal: controller.signal,
       })
 

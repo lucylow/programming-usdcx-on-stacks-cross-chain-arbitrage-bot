@@ -4,6 +4,7 @@ import { logger } from "../utils/logger"
 import {
   PriceOracleError,
   NetworkError,
+  TimeoutError,
   ValidationError,
   withTimeout,
   withErrorBoundary,

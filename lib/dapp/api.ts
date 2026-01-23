@@ -9,10 +9,18 @@ import type {
   NftBadge,
   Transaction,
 } from "./types"
+import { getApiBaseUrl, isLovableEnvironment, logLovableInfo, shouldUseMockData } from "../utils/lovable"
+
+// Initialize Lovable logging on module load
+if (typeof window !== "undefined") {
+  logLovableInfo()
+}
 
 // Support both VITE_ (Vite) and NEXT_PUBLIC_ (Next.js) prefixes for compatibility
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || import.meta.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001/api")
-const STACKS_API = (import.meta.env.VITE_STACKS_API || import.meta.env.NEXT_PUBLIC_STACKS_API || "https://api.testnet.hiro.so")
+const BACKEND_URL = getApiBaseUrl() || 
+  ((import.meta as any).env?.VITE_BACKEND_URL || (import.meta as any).env?.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001/api")
+const STACKS_API = ((import.meta as any).env?.VITE_STACKS_API || (import.meta as any).env?.NEXT_PUBLIC_STACKS_API || "https://api.testnet.hiro.so")
+const USE_MOCK_DATA = shouldUseMockData()
 
 class DappApi {
   private backendUrl: string
@@ -22,12 +30,17 @@ class DappApi {
   constructor() {
     this.backendUrl = BACKEND_URL
     this.stacksApi = STACKS_API
-    // Always enable mock data fallback for Lovable compatibility
-    // Can be explicitly disabled via env var if needed
-    this.useMockData = (import.meta.env.VITE_USE_MOCK_DATA || import.meta.env.NEXT_PUBLIC_USE_MOCK_DATA) !== "false"
+    // Use centralized Lovable detection
+    this.useMockData = USE_MOCK_DATA
   }
 
   private async fetchBackend<T>(endpoint: string, options?: RequestInit, retries = 3): Promise<T> {
+    // On Lovable with mock data enabled, skip network requests
+    if (this.useMockData && isLovableEnvironment()) {
+      console.log(`[Lovable] Using mock data for: ${endpoint}`)
+      return this.getMockData<T>(endpoint)
+    }
+
     let lastError: Error | null = null
 
     for (let attempt = 1; attempt <= retries; attempt++) {
@@ -225,8 +238,8 @@ class DappApi {
   /**
    * Generate mock Stacks transactions
    */
-  private generateMockStacksTransactions(): any[] {
-    const transactions = []
+  private generateMockStacksTransactions(): Array<Record<string, unknown>> {
+    const transactions: Array<Record<string, unknown>> = []
     for (let i = 0; i < 5; i++) {
       transactions.push({
         tx_id: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("")}`,
@@ -250,8 +263,9 @@ class DappApi {
       "/health": { 
         status: "healthy", 
         timestamp: new Date().toISOString(),
-        mode: "mock",
-        message: "Using mock data fallback"
+        mode: isLovableEnvironment() ? "lovable" : "mock",
+        message: isLovableEnvironment() ? "Running on Lovable with mock data" : "Using mock data fallback",
+        version: "1.0.0",
       },
       "/bot/status": {
         running: true,
@@ -522,7 +536,7 @@ class DappApi {
       `/extended/v1/address/${address}/transactions?limit=${limit}`,
     )
 
-    return data.results.map((tx: any) => ({
+    return (data.results || []).map((tx: any): Transaction => ({
       id: tx.tx_id,
       type: tx.tx_type === "contract_call" ? "swap" : "approve",
       status: tx.tx_status === "success" ? "confirmed" : "pending",

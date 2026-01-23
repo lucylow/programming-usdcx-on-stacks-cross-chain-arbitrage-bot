@@ -1,0 +1,34 @@
+{
+  "name": "Cross-Chain Arbitrage Bot",
+  "description": "AI-powered cross-chain arbitrage bot for USDCx trading between Ethereum and Stacks blockchains",
+  "version": "1.0.0",
+  "framework": "react",
+  "buildTool": "vite",
+  "features": {
+    "componentTagging": true,
+    "mockDataFallback": true,
+    "autoEnvironmentDetection": true
+  },
+  "environment": {
+    "development": {
+      "useMockData": true,
+      "enableComponentTagging": true,
+      "apiTimeout": 30000
+    },
+    "production": {
+      "useMockData": false,
+      "enableComponentTagging": false,
+      "apiTimeout": 30000
+    }
+  },
+  "api": {
+    "baseUrl": "http://localhost:3001/api",
+    "retries": 3,
+    "timeout": 30000,
+    "mockDataEnabled": true
+  },
+  "build": {
+    "sourcemaps": true,
+    "optimizeChunks": true
+  }
+}
