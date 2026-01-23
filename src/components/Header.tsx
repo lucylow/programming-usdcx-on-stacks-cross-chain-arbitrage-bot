@@ -1,18 +1,17 @@
-import { useState, useEffect, useMemo, memo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
-import { Bot, Menu, X, BarChart3, TrendingUp, BookOpen, Home, AlertCircle, Lightbulb, Play, Sparkles, Users, Info } from "lucide-react";
+import { Bot, Menu, X, BarChart3, TrendingUp, BookOpen, Home, Lightbulb, Play, Sparkles } from "lucide-react";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
+import { StacksWalletButton } from "../../components/stacks/StacksWalletButton";
 
 // Landing page section links (anchor links)
 const sectionLinks = [
-  { href: "#problem", label: "Challenge", icon: AlertCircle },
-  { href: "#solution", label: "Solution", icon: Lightbulb },
-  { href: "#demo", label: "Demo", icon: Play },
   { href: "#features", label: "Features", icon: Sparkles },
-  { href: "#zephyr", label: "About", icon: Info },
-  { href: "#team", label: "Team", icon: Users },
+  { href: "#stacks", label: "Stacks", icon: Bot },
+  { href: "#how-it-works", label: "How It Works", icon: Lightbulb },
+  { href: "#demo", label: "Demo", icon: Play },
 ];
 
 // Multi-page navigation links
@@ -24,11 +23,54 @@ const pageLinks = [
   { href: "/resources", label: "Resources", icon: BookOpen },
 ];
 
+// Helper function to handle section clicks
+const handleSectionClick = (href: string) => {
+  const element = document.querySelector(href);
+  if (element) {
+    element.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+};
+
+// Section link component
+const SectionLink = ({ link, onClick }: { link: typeof sectionLinks[number]; onClick: (e: React.MouseEvent) => void }) => (
+  <a
+    href={link.href}
+    onClick={onClick}
+    className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors px-3 py-2 rounded-lg hover:bg-accent/50 group"
+  >
+    {link.icon && <link.icon className="w-4 h-4 group-hover:scale-110 transition-transform" />}
+    <span className="font-medium">{link.label}</span>
+  </a>
+);
+
+// Nav link component
+const NavLink = ({ link, isActive }: { link: typeof pageLinks[number]; isActive: boolean }) => (
+  <Link
+    to={link.href}
+    className={cn(
+      "flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors px-3 py-2 rounded-lg",
+      isActive && "text-primary bg-primary/10"
+    )}
+  >
+    <link.icon className="w-4 h-4" />
+    <span className="font-medium">{link.label}</span>
+  </Link>
+);
+
 export function Header() {
   const location = useLocation();
   const isHomePage = location.pathname === "/";
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Compute active page links
+  const activePageLinks = useMemo(() => {
+    return pageLinks.map(link => ({
+      link,
+      isActive: location.pathname === link.href || 
+        (link.href !== "/" && location.pathname.startsWith(link.href))
+    }));
+  }, [location.pathname]);
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 50);
@@ -91,16 +133,14 @@ export function Header() {
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
+            <StacksWalletButton />
             {isHomePage ? (
               <Button asChild className="bg-gradient-to-r from-primary to-primary-dark hover:opacity-90 transition-opacity">
                 <a 
                   href="#demo"
                   onClick={(e) => {
                     e.preventDefault();
-                    const element = document.querySelector("#demo");
-                    if (element) {
-                      element.scrollIntoView({ behavior: "smooth", block: "start" });
-                    }
+                    handleSectionClick("#demo");
                   }}
                 >
                   Try Demo
@@ -108,7 +148,7 @@ export function Header() {
               </Button>
             ) : (
               <Button asChild className="bg-gradient-to-r from-primary to-primary-dark hover:opacity-90 transition-opacity">
-                <Link to="/bot">Go to Bot</Link>
+                <Link to="/bot/dashboard">Go to Bot</Link>
               </Button>
             )}
           </div>
@@ -143,35 +183,30 @@ export function Header() {
                       onClick={(e) => {
                         e.preventDefault();
                         setIsMobileMenuOpen(false);
-                        const element = document.querySelector(link.href);
-                        if (element) {
-                          setTimeout(() => {
-                            element.scrollIntoView({ behavior: "smooth", block: "start" });
-                          }, 100);
-                        }
+                        handleSectionClick(link.href);
                       }}
                     >
                       {link.icon && <link.icon className="w-4 h-4 group-hover:scale-110 transition-transform" />}
                       <span className="font-medium">{link.label}</span>
                     </a>
                   ))}
-                  <Button asChild className="bg-gradient-to-r from-primary to-primary-dark mt-2">
-                    <a 
-                      href="#demo"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setIsMobileMenuOpen(false);
-                        const element = document.querySelector("#demo");
-                        if (element) {
-                          setTimeout(() => {
-                            element.scrollIntoView({ behavior: "smooth", block: "start" });
-                          }, 100);
-                        }
-                      }}
-                    >
-                      Try Demo
-                    </a>
-                  </Button>
+                  <div className="mt-2 space-y-2">
+                    <div className="px-4">
+                      <StacksWalletButton />
+                    </div>
+                    <Button asChild className="bg-gradient-to-r from-primary to-primary-dark w-full">
+                      <a 
+                        href="#demo"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setIsMobileMenuOpen(false);
+                          handleSectionClick("#demo");
+                        }}
+                      >
+                        Try Demo
+                      </a>
+                    </Button>
+                  </div>
                 </>
               ) : (
                 // Show page navigation links on other pages
@@ -194,9 +229,14 @@ export function Header() {
                       </Link>
                     );
                   })}
-                  <Button asChild className="bg-gradient-to-r from-primary to-primary-dark">
-                    <Link to="/bot" onClick={() => setIsMobileMenuOpen(false)}>Go to Bot</Link>
-                  </Button>
+                  <div className="mt-2 space-y-2">
+                    <div className="px-4">
+                      <StacksWalletButton />
+                    </div>
+                    <Button asChild className="bg-gradient-to-r from-primary to-primary-dark w-full">
+                      <Link to="/bot/dashboard" onClick={() => setIsMobileMenuOpen(false)}>Go to Bot</Link>
+                    </Button>
+                  </div>
                 </>
               )}
             </div>
@@ -205,5 +245,4 @@ export function Header() {
       </div>
     </motion.header>
   );
-});
-Header.displayName = "Header";
+}

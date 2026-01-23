@@ -594,6 +594,44 @@ export function InteractiveDemo() {
             </div>
           </div>
         </motion.div>
+
+        {/* Call to Action */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.3 }}
+          className="text-center mt-12"
+        >
+          <h3 className="text-2xl font-bold mb-4">Ready to explore the full bot?</h3>
+          <p className="text-muted-foreground mb-6 max-w-2xl mx-auto">
+            Access the complete dashboard with real-time monitoring, opportunity detection, and trade history.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Button
+              asChild
+              size="lg"
+              className="bg-gradient-to-r from-primary to-primary-dark hover:opacity-90"
+            >
+              <Link to="/bot/dashboard" className="flex items-center gap-2">
+                <Bot className="w-5 h-5" />
+                Launch Bot Dashboard
+                <ExternalLink className="w-4 h-4" />
+              </Link>
+            </Button>
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="border-2 hover:bg-accent"
+            >
+              <Link to="/bot/opportunities" className="flex items-center gap-2">
+                <Zap className="w-5 h-5" />
+                View Opportunities
+              </Link>
+            </Button>
+          </div>
+        </motion.div>
       </div>
     </section>
   );

@@ -1,10 +1,11 @@
 import { motion } from "framer-motion";
-import { Brain, Calculator, Shield, Layers, Cable } from "lucide-react";
+import { Brain, Calculator, Shield, Layers, Cable, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 export function SolutionSection() {
   return (
-    <section id="solution" className="py-24">
+    <section id="how-it-works" className="py-24">
       <div className="container mx-auto px-4 md:px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -122,7 +123,7 @@ export function SolutionSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 1 }}
-            className="text-center mt-12"
+            className="text-center mt-12 flex flex-col sm:flex-row items-center justify-center gap-4"
           >
             <Button
               asChild
@@ -130,6 +131,17 @@ export function SolutionSection() {
               className="bg-gradient-to-r from-primary to-primary-dark hover:opacity-90"
             >
               <a href="#demo">See It In Action</a>
+            </Button>
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="border-2 hover:bg-accent"
+            >
+              <Link to="/bot/dashboard" className="flex items-center gap-2">
+                Launch Bot Dashboard
+                <ArrowRight className="w-4 h-4" />
+              </Link>
             </Button>
           </motion.div>
         </motion.div>

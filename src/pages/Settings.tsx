@@ -68,8 +68,12 @@ export default function Settings() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-darker via-dark to-darker">
-      <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
+    <div className="min-h-screen bg-background text-foreground relative">
+      {/* Background gradients */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,hsla(245,100%,64%,0.15),transparent_50%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,hsla(162,100%,42%,0.08),transparent_40%)]" />
+      
+      <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -77,7 +81,7 @@ export default function Settings() {
         >
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-brand to-accent bg-clip-text text-transparent mb-2">
+            <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-foreground via-foreground/90 to-foreground/70 bg-clip-text text-transparent mb-2">
               Settings
             </h1>
             <p className="text-muted-foreground">
@@ -86,18 +90,21 @@ export default function Settings() {
           </div>
 
           {/* Wallet Settings */}
-          <Card className="bg-dark/60 border-white/10 backdrop-blur-xl mb-6">
-            <CardHeader>
+          <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 mb-6">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <CardHeader className="relative">
               <div className="flex items-center gap-2">
-                <Wallet className="w-5 h-5 text-brand" />
+                <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+                  <Wallet className="w-5 h-5 text-primary" />
+                </div>
                 <CardTitle>Wallet</CardTitle>
               </div>
               <CardDescription>Manage your wallet connection</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="relative space-y-4">
               {wallet.connected && wallet.address ? (
                 <div className="space-y-4">
-                  <div className="p-4 bg-darker/60 rounded-lg border border-white/5">
+                  <div className="p-4 bg-card/50 rounded-lg border border-border/50">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium mb-1">Connected Wallet</p>
@@ -105,7 +112,7 @@ export default function Settings() {
                           {wallet.address}
                         </p>
                       </div>
-                      <Badge className="bg-accent/20 text-accent border-accent/30">
+                      <Badge className="bg-secondary/20 text-secondary border-secondary/30">
                         Connected
                       </Badge>
                     </div>
@@ -132,15 +139,18 @@ export default function Settings() {
           </Card>
 
           {/* Notifications */}
-          <Card className="bg-dark/60 border-white/10 backdrop-blur-xl mb-6">
-            <CardHeader>
+          <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 mb-6">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <CardHeader className="relative">
               <div className="flex items-center gap-2">
-                <Bell className="w-5 h-5 text-brand" />
+                <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+                  <Bell className="w-5 h-5 text-primary" />
+                </div>
                 <CardTitle>Notifications</CardTitle>
               </div>
               <CardDescription>Control how you receive updates</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="relative space-y-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label>Email Notifications</Label>
@@ -195,15 +205,18 @@ export default function Settings() {
           </Card>
 
           {/* Preferences */}
-          <Card className="bg-dark/60 border-white/10 backdrop-blur-xl mb-6">
-            <CardHeader>
+          <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 mb-6">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <CardHeader className="relative">
               <div className="flex items-center gap-2">
-                <Palette className="w-5 h-5 text-brand" />
+                <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+                  <Palette className="w-5 h-5 text-primary" />
+                </div>
                 <CardTitle>Preferences</CardTitle>
               </div>
               <CardDescription>Customize your experience</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="relative space-y-4">
               <div className="space-y-2">
                 <Label>Theme</Label>
                 <Select

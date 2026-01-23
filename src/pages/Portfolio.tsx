@@ -100,8 +100,12 @@ export default function Portfolio() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-darker via-dark to-darker">
-      <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+    <div className="min-h-screen bg-background text-foreground relative">
+      {/* Background gradients */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,hsla(245,100%,64%,0.15),transparent_50%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,hsla(162,100%,42%,0.08),transparent_40%)]" />
+      
+      <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -110,7 +114,7 @@ export default function Portfolio() {
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
             <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-brand to-accent bg-clip-text text-transparent mb-2">
+              <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-foreground via-foreground/90 to-foreground/70 bg-clip-text text-transparent mb-2">
                 Portfolio
               </h1>
               <p className="text-muted-foreground">
@@ -141,8 +145,9 @@ export default function Portfolio() {
           </div>
 
           {/* Total Value Card */}
-          <Card className="mb-6 bg-dark/60 border-white/10 backdrop-blur-xl">
-            <CardContent className="p-6">
+          <Card className="mb-6 group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:shadow-primary/20">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <CardContent className="relative p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Total Portfolio Value</p>
@@ -152,7 +157,7 @@ export default function Portfolio() {
                     </h2>
                     <div className={cn(
                       "flex items-center gap-1 text-sm font-medium",
-                      totalChangePercent >= 0 ? "text-accent" : "text-error"
+                      totalChangePercent >= 0 ? "text-secondary" : "text-destructive"
                     )}>
                       {totalChangePercent >= 0 ? (
                         <TrendingUp className="w-4 h-4" />
@@ -166,9 +171,9 @@ export default function Portfolio() {
                     24h change: {showBalances ? `$${totalChange24h >= 0 ? "+" : ""}${totalChange24h.toFixed(2)}` : "•••"}
                   </p>
                 </div>
-                <div className="hidden sm:block">
-                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-brand/20 to-accent/20 flex items-center justify-center">
-                    <Wallet className="w-12 h-12 text-brand" />
+                    <div className="hidden sm:block">
+                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/20 flex items-center justify-center">
+                    <Wallet className="w-12 h-12 text-primary" />
                   </div>
                 </div>
               </div>
@@ -177,12 +182,13 @@ export default function Portfolio() {
 
           {/* Wallet Info */}
           {wallet.connected && wallet.address && (
-            <Card className="mb-6 bg-dark/60 border-white/10 backdrop-blur-xl">
-              <CardContent className="p-4">
+            <Card className="mb-6 group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <CardContent className="relative p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-brand/20 flex items-center justify-center">
-                      <Wallet className="w-5 h-5 text-brand" />
+                    <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+                      <Wallet className="w-5 h-5 text-primary" />
                     </div>
                     <div>
                       <p className="text-sm font-medium">Connected Wallet</p>
@@ -223,13 +229,14 @@ export default function Portfolio() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
               >
-                <Card className="bg-dark/60 border-white/10 backdrop-blur-xl hover:border-brand/30 transition-all">
-                  <CardContent className="p-6">
+                <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <CardContent className="relative p-6">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4 flex-1">
                         <div className={cn(
-                          "w-12 h-12 rounded-full flex items-center justify-center",
-                          asset.chain === "stacks" ? "bg-stacks/20" : "bg-ethereum/20"
+                          "w-12 h-12 rounded-full flex items-center justify-center border",
+                          asset.chain === "stacks" ? "bg-stacks/10 border-stacks/20" : "bg-ethereum/10 border-ethereum/20"
                         )}>
                           <span className="text-lg font-bold">
                             {asset.symbol.slice(0, 2)}
@@ -256,7 +263,7 @@ export default function Portfolio() {
                         </div>
                         <div className={cn(
                           "flex items-center gap-1 text-xs font-medium",
-                          asset.change24h >= 0 ? "text-accent" : "text-error"
+                          asset.change24h >= 0 ? "text-secondary" : "text-destructive"
                         )}>
                           {asset.change24h >= 0 ? (
                             <ArrowUpRight className="w-3 h-3" />
@@ -276,11 +283,12 @@ export default function Portfolio() {
           {/* Quick Actions */}
           <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Link to="/swap">
-              <Card className="bg-dark/60 border-white/10 backdrop-blur-xl hover:border-brand/50 transition-all cursor-pointer h-full">
-                <CardContent className="p-6">
+              <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 cursor-pointer h-full">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <CardContent className="relative p-6">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-brand/20 flex items-center justify-center">
-                      <ArrowUpRight className="w-5 h-5 text-brand" />
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                      <ArrowUpRight className="w-5 h-5 text-primary" />
                     </div>
                     <div>
                       <h4 className="font-semibold">Swap Tokens</h4>
@@ -291,11 +299,12 @@ export default function Portfolio() {
               </Card>
             </Link>
             <Link to="/markets">
-              <Card className="bg-dark/60 border-white/10 backdrop-blur-xl hover:border-brand/50 transition-all cursor-pointer h-full">
-                <CardContent className="p-6">
+              <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-secondary/50 transition-all duration-300 hover:shadow-xl hover:shadow-secondary/20 hover:-translate-y-1 cursor-pointer h-full">
+                <div className="absolute inset-0 bg-gradient-to-br from-secondary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <CardContent className="relative p-6">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center">
-                      <TrendingUp className="w-5 h-5 text-accent" />
+                    <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center group-hover:bg-secondary/20 transition-colors">
+                      <TrendingUp className="w-5 h-5 text-secondary" />
                     </div>
                     <div>
                       <h4 className="font-semibold">View Markets</h4>
@@ -306,11 +315,12 @@ export default function Portfolio() {
               </Card>
             </Link>
             <Link to="/activity">
-              <Card className="bg-dark/60 border-white/10 backdrop-blur-xl hover:border-brand/50 transition-all cursor-pointer h-full">
-                <CardContent className="p-6">
+              <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 cursor-pointer h-full">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <CardContent className="relative p-6">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-brand/20 flex items-center justify-center">
-                      <ExternalLink className="w-5 h-5 text-brand" />
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                      <ExternalLink className="w-5 h-5 text-primary" />
                     </div>
                     <div>
                       <h4 className="font-semibold">View Activity</h4>
