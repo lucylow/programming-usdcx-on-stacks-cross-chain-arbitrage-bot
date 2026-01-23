@@ -1,3 +1,4 @@
+import { createElement } from "react"
 import { toast } from "sonner"
 import { CheckCircle2, XCircle, AlertCircle, Info, Loader2 } from "lucide-react"
 
@@ -20,7 +21,7 @@ export function useToastEnhanced() {
     return toast.success(message, {
       description: options?.description,
       duration: options?.duration || 4000,
-      icon: <CheckCircle2 className="w-5 h-5" />,
+      icon: createElement(CheckCircle2, { className: "w-5 h-5" }),
       action: options?.action ? {
         label: options.action.label,
         onClick: options.action.onClick,
@@ -32,7 +33,7 @@ export function useToastEnhanced() {
     return toast.error(message, {
       description: options?.description,
       duration: options?.duration || 6000,
-      icon: <XCircle className="w-5 h-5" />,
+      icon: createElement(XCircle, { className: "w-5 h-5" }),
       action: options?.action ? {
         label: options.action.label,
         onClick: options.action.onClick,
@@ -44,7 +45,7 @@ export function useToastEnhanced() {
     return toast.warning(message, {
       description: options?.description,
       duration: options?.duration || 5000,
-      icon: <AlertCircle className="w-5 h-5" />,
+      icon: createElement(AlertCircle, { className: "w-5 h-5" }),
       action: options?.action ? {
         label: options.action.label,
         onClick: options.action.onClick,
@@ -56,7 +57,7 @@ export function useToastEnhanced() {
     return toast.info(message, {
       description: options?.description,
       duration: options?.duration || 4000,
-      icon: <Info className="w-5 h-5" />,
+      icon: createElement(Info, { className: "w-5 h-5" }),
       action: options?.action ? {
         label: options.action.label,
         onClick: options.action.onClick,
@@ -67,7 +68,7 @@ export function useToastEnhanced() {
   const showLoading = (message: string, options?: ToastOptions) => {
     return toast.loading(message, {
       description: options?.description,
-      icon: <Loader2 className="w-5 h-5 animate-spin" />,
+      icon: createElement(Loader2, { className: "w-5 h-5 animate-spin" }),
     })
   }
 
@@ -80,24 +81,11 @@ export function useToastEnhanced() {
     },
     options?: ToastOptions
   ) => {
+    // sonner's toast.promise typings expect strings / ReactNodes (not {title, description} objects)
     return toast.promise(promise, {
-      loading: {
-        title: messages.loading,
-        description: options?.description,
-        icon: <Loader2 className="w-5 h-5 animate-spin" />,
-      },
-      success: {
-        title: typeof messages.success === "function" ? messages.success : messages.success,
-        description: options?.description,
-        icon: <CheckCircle2 className="w-5 h-5" />,
-        duration: options?.duration || 4000,
-      },
-      error: {
-        title: typeof messages.error === "function" ? messages.error : messages.error,
-        description: options?.description,
-        icon: <XCircle className="w-5 h-5" />,
-        duration: options?.duration || 6000,
-      },
+      loading: messages.loading,
+      success: (data) => (typeof messages.success === "function" ? messages.success(data) : messages.success),
+      error: (err) => (typeof messages.error === "function" ? messages.error(err) : messages.error),
     })
   }
 
