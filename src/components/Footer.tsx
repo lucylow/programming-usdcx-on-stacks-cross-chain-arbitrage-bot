@@ -1,4 +1,5 @@
 import { Bot } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const footerLinks = {
   project: [
@@ -9,12 +10,18 @@ const footerLinks = {
     { label: "About", href: "#zephyr" },
     { label: "Team", href: "#team" },
   ],
+  bot: [
+    { label: "Bot Dashboard", href: "/bot/dashboard", isRoute: true },
+    { label: "Opportunities", href: "/bot/opportunities", isRoute: true },
+    { label: "Trade History", href: "/bot/history", isRoute: true },
+    { label: "Analytics", href: "/analytics", isRoute: true },
+    { label: "Risk Analysis", href: "/analytics/risk", isRoute: true },
+  ],
   resources: [
-    { label: "GitHub Repository", href: "#" },
-    { label: "Technical Documentation", href: "#" },
-    { label: "Smart Contracts", href: "#" },
-    { label: "Demo Video", href: "#" },
-    { label: "Hackathon Submission", href: "#" },
+    { label: "Documentation", href: "/docs", isRoute: true },
+    { label: "FAQ", href: "/faq", isRoute: true },
+    { label: "Resources", href: "/resources", isRoute: true },
+    { label: "Interactive Demo", href: "/demo", isRoute: true },
   ],
   hackathon: [
     { label: "Stacks Labs", href: "#" },
@@ -38,10 +45,10 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
           {/* Brand */}
           <div>
-            <a href="#" className="flex items-center gap-2.5 mb-5">
+            <Link to="/" className="flex items-center gap-2.5 mb-5">
               <Bot className="w-8 h-8 text-primary" />
               <span className="text-xl font-bold">ArbitrageBot</span>
-            </a>
+            </Link>
             <p className="text-muted-foreground text-sm mb-5">
               An automated cross-chain arbitrage system leveraging USDCx on Stacks.
               Built for the Programming USDCx on Stacks Builder Challenge.
@@ -84,13 +91,38 @@ export function Footer() {
           </div>
 
           <div>
+            <h4 className="font-semibold mb-4">Bot & Analytics</h4>
+            <ul className="space-y-2">
+              {footerLinks.bot.map((link) => (
+                <li key={link.label}>
+                  {link.isRoute ? (
+                    <Link to={link.href} className="text-muted-foreground hover:text-secondary transition-colors text-sm">
+                      {link.label}
+                    </Link>
+                  ) : (
+                    <a href={link.href} className="text-muted-foreground hover:text-secondary transition-colors text-sm">
+                      {link.label}
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
             <h4 className="font-semibold mb-4">Resources</h4>
             <ul className="space-y-2">
               {footerLinks.resources.map((link) => (
                 <li key={link.label}>
-                  <a href={link.href} className="text-muted-foreground hover:text-secondary transition-colors text-sm">
-                    {link.label}
-                  </a>
+                  {link.isRoute ? (
+                    <Link to={link.href} className="text-muted-foreground hover:text-secondary transition-colors text-sm">
+                      {link.label}
+                    </Link>
+                  ) : (
+                    <a href={link.href} className="text-muted-foreground hover:text-secondary transition-colors text-sm">
+                      {link.label}
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>

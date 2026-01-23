@@ -1,7 +1,9 @@
+import { memo, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Trophy, PlayCircle } from "lucide-react";
+import { Trophy, PlayCircle, BarChart3, Zap, FileText, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import { useStacks } from "@lib/stacks/StacksProvider";
 
 const stats = [
   { value: "0.5%+", label: "Avg. Profit per Trade" },
@@ -28,6 +30,8 @@ StatCard.displayName = "StatCard";
 
 export const Hero = memo(() => {
   const memoizedStats = useMemo(() => stats, []);
+  const { isSignedIn } = useStacks();
+  
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
       {/* Background gradient */}
@@ -64,17 +68,81 @@ export const Hero = memo(() => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
+            className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
+            {!isSignedIn ? (
+              <Button
+                asChild
+                size="lg"
+                className="bg-gradient-to-r from-primary to-primary-dark hover:opacity-90 text-lg px-8 py-6 glow-primary"
+              >
+                <Link to="/bot/dashboard" className="flex items-center gap-2">
+                  <Wallet className="w-5 h-5" />
+                  Connect Wallet to Start
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                asChild
+                size="lg"
+                className="bg-gradient-to-r from-primary to-primary-dark hover:opacity-90 text-lg px-8 py-6 glow-primary"
+              >
+                <Link to="/bot/dashboard" className="flex items-center gap-2">
+                  <PlayCircle className="w-5 h-5" />
+                  Launch Bot Dashboard
+                </Link>
+              </Button>
+            )}
             <Button
               asChild
               size="lg"
-              className="bg-gradient-to-r from-primary to-primary-dark hover:opacity-90 text-lg px-8 py-6 glow-primary"
+              variant="outline"
+              className="text-lg px-8 py-6 border-2 hover:bg-accent"
             >
-              <Link to="/bot" className="flex items-center gap-2">
-                <PlayCircle className="w-5 h-5" />
-                Launch Interactive Demo
+              <Link to="/bot/opportunities" className="flex items-center gap-2">
+                <Zap className="w-5 h-5" />
+                View Opportunities
               </Link>
             </Button>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="flex flex-wrap items-center justify-center gap-3 mt-4"
+          >
+            <Link
+              to="/bot/dashboard"
+              className="text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Dashboard
+            </Link>
+            <span className="text-muted-foreground">•</span>
+            <Link
+              to="/bot/opportunities"
+              className="text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+            >
+              <Zap className="w-4 h-4" />
+              Opportunities
+            </Link>
+            <span className="text-muted-foreground">•</span>
+            <Link
+              to="/bot/history"
+              className="text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+            >
+              <FileText className="w-4 h-4" />
+              Trade History
+            </Link>
+            <span className="text-muted-foreground">•</span>
+            <Link
+              to="/analytics"
+              className="text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Analytics
+            </Link>
           </motion.div>
 
           <motion.div
