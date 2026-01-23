@@ -2,10 +2,11 @@ import { Bot } from "lucide-react";
 
 const footerLinks = {
   project: [
-    { label: "Problem", href: "#problem" },
+    { label: "Challenge", href: "#problem" },
     { label: "Solution", href: "#solution" },
-    { label: "Live Demo", href: "#demo" },
+    { label: "Demo", href: "#demo" },
     { label: "Features", href: "#features" },
+    { label: "About", href: "#zephyr" },
     { label: "Team", href: "#team" },
   ],
   resources: [

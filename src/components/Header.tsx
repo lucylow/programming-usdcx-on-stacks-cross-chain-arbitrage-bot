@@ -1,18 +1,18 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
-import { Bot, Menu, X, BarChart3, TrendingUp, BookOpen, Home } from "lucide-react";
+import { Bot, Menu, X, BarChart3, TrendingUp, BookOpen, Home, AlertCircle, Lightbulb, Play, Sparkles, Users, Info } from "lucide-react";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
 
 // Landing page section links (anchor links)
 const sectionLinks = [
-  { href: "#problem", label: "Problem" },
-  { href: "#solution", label: "Solution" },
-  { href: "#demo", label: "Live Demo" },
-  { href: "#features", label: "Features" },
-  { href: "#zephyr", label: "Zephyr" },
-  { href: "#team", label: "Team" },
+  { href: "#problem", label: "Challenge", icon: AlertCircle },
+  { href: "#solution", label: "Solution", icon: Lightbulb },
+  { href: "#demo", label: "Demo", icon: Play },
+  { href: "#features", label: "Features", icon: Sparkles },
+  { href: "#zephyr", label: "About", icon: Info },
+  { href: "#team", label: "Team", icon: Users },
 ];
 
 // Multi-page navigation links
@@ -57,7 +57,7 @@ export function Header() {
             <span className="text-xl font-bold text-foreground">ArbitrageBot</span>
           </Link>
 
-          <div className="hidden md:flex items-center gap-6">
+          <div className="hidden md:flex items-center gap-4">
             {isHomePage ? (
               // Show section links on home page
               <>
@@ -65,10 +65,18 @@ export function Header() {
                   <a
                     key={link.href}
                     href={link.href}
-                    className="text-muted-foreground hover:text-secondary transition-colors relative group font-medium"
+                    className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-all relative group font-medium px-3 py-2 rounded-lg hover:bg-accent/50"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const element = document.querySelector(link.href);
+                      if (element) {
+                        element.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }
+                    }}
                   >
-                    {link.label}
-                    <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-secondary transition-all group-hover:w-full" />
+                    {link.icon && <link.icon className="w-4 h-4 group-hover:scale-110 transition-transform" />}
+                    <span>{link.label}</span>
+                    <span className="absolute -bottom-1 left-3 right-3 h-0.5 bg-primary scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
                   </a>
                 ))}
               </>
@@ -102,7 +110,18 @@ export function Header() {
           <div className="hidden md:flex items-center gap-3">
             {isHomePage ? (
               <Button asChild className="bg-gradient-to-r from-primary to-primary-dark hover:opacity-90 transition-opacity">
-                <a href="#demo">Try Demo</a>
+                <a 
+                  href="#demo"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const element = document.querySelector("#demo");
+                    if (element) {
+                      element.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                  }}
+                >
+                  Try Demo
+                </a>
               </Button>
             ) : (
               <Button asChild className="bg-gradient-to-r from-primary to-primary-dark hover:opacity-90 transition-opacity">
@@ -127,7 +146,7 @@ export function Header() {
             exit={{ opacity: 0, height: 0 }}
             className="md:hidden pb-6"
           >
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
               {isHomePage ? (
                 // Show section links on home page
                 <>
@@ -135,14 +154,38 @@ export function Header() {
                     <a
                       key={link.href}
                       href={link.href}
-                      className="text-muted-foreground hover:text-secondary transition-colors py-2"
-                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors py-3 px-4 rounded-lg hover:bg-accent/50 group"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setIsMobileMenuOpen(false);
+                        const element = document.querySelector(link.href);
+                        if (element) {
+                          setTimeout(() => {
+                            element.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }, 100);
+                        }
+                      }}
                     >
-                      {link.label}
+                      {link.icon && <link.icon className="w-4 h-4 group-hover:scale-110 transition-transform" />}
+                      <span className="font-medium">{link.label}</span>
                     </a>
                   ))}
-                  <Button asChild className="bg-gradient-to-r from-primary to-primary-dark">
-                    <a href="#demo">Try Demo</a>
+                  <Button asChild className="bg-gradient-to-r from-primary to-primary-dark mt-2">
+                    <a 
+                      href="#demo"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setIsMobileMenuOpen(false);
+                        const element = document.querySelector("#demo");
+                        if (element) {
+                          setTimeout(() => {
+                            element.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }, 100);
+                        }
+                      }}
+                    >
+                      Try Demo
+                    </a>
                   </Button>
                 </>
               ) : (
