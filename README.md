@@ -394,6 +394,500 @@ sequenceDiagram
     ETH-->>Bot: Final confirmation
 ```
 
+### Database Schema
+
+```mermaid
+erDiagram
+    TRADES ||--o{ TRADE_STEPS : contains
+    OPPORTUNITIES ||--o| TRADES : generates
+    PRICES ||--o{ OPPORTUNITIES : used_in
+    
+    TRADES {
+        uuid id PK
+        string opportunity_id FK
+        string status
+        decimal profit
+        decimal roi
+        bigint execution_time
+        decimal gas_cost
+        decimal bridge_fee
+        decimal slippage
+        json tx_hashes
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    TRADE_STEPS {
+        uuid id PK
+        uuid trade_id FK
+        string step_type
+        string chain
+        string status
+        string tx_hash
+        decimal amount
+        decimal gas_used
+        timestamp executed_at
+    }
+    
+    OPPORTUNITIES {
+        string id PK
+        string source_chain
+        string target_chain
+        string source_dex
+        string target_dex
+        decimal source_price
+        decimal target_price
+        decimal spread
+        decimal expected_profit
+        decimal confidence
+        string status
+        decimal trade_size
+        timestamp detected_at
+        timestamp expires_at
+    }
+    
+    PRICES {
+        uuid id PK
+        string chain
+        string dex
+        string pair
+        decimal price
+        decimal liquidity
+        decimal confidence
+        bigint timestamp
+    }
+    
+    METRICS {
+        uuid id PK
+        string metric_type
+        decimal value
+        json metadata
+        timestamp recorded_at
+    }
+```
+
+### API Request/Response Flow
+
+```mermaid
+sequenceDiagram
+    participant Client as Client/Frontend
+    participant API as Express API
+    participant MW as Middleware
+    participant Engine as Arbitrage Engine
+    participant DB as PostgreSQL
+    participant Cache as Redis
+    
+    Client->>API: HTTP Request
+    API->>MW: Request Processing
+    MW->>MW: CORS Check
+    MW->>MW: Rate Limiting
+    MW->>MW: Input Validation
+    
+    alt Cache Hit
+        MW->>Cache: Check Cache
+        Cache-->>MW: Cached Response
+        MW-->>API: Return Cached Data
+    else Cache Miss
+        MW->>Engine: Process Request
+        Engine->>DB: Query Data
+        DB-->>Engine: Data Result
+        Engine->>Cache: Store in Cache
+        Engine-->>MW: Processed Data
+    end
+    
+    MW-->>API: Response Data
+    API->>API: Format Response
+    API-->>Client: JSON Response
+    
+    Note over Client,API: Error Handling
+    alt Error Occurs
+        API->>API: Error Handler
+        API->>API: Log Error
+        API-->>Client: Error Response
+    end
+```
+
+### Error Handling & Retry Logic Flow
+
+```mermaid
+flowchart TD
+    Start[Operation Starts] --> Execute{Execute Operation}
+    Execute --> Success{Success?}
+    
+    Success -->|Yes| Complete[Operation Complete]
+    
+    Success -->|No| ErrorType{Error Type?}
+    
+    ErrorType -->|Network Error| RetryCheck1{Retry Count < Max?}
+    ErrorType -->|Transaction Failed| RetryCheck2{Retry Count < Max?}
+    ErrorType -->|Bridge Timeout| RetryCheck3{Retry Count < Max?}
+    ErrorType -->|Fatal Error| LogError[Log Error & Abort]
+    
+    RetryCheck1 -->|Yes| Backoff1[Exponential Backoff]
+    RetryCheck2 -->|Yes| Backoff2[Exponential Backoff]
+    RetryCheck3 -->|Yes| Backoff3[Exponential Backoff]
+    
+    RetryCheck1 -->|No| LogError
+    RetryCheck2 -->|No| LogError
+    RetryCheck3 -->|No| LogError
+    
+    Backoff1 --> Wait1[Wait: 2^retryCount seconds]
+    Backoff2 --> Wait2[Wait: 2^retryCount seconds]
+    Backoff3 --> Wait3[Wait: 2^retryCount seconds]
+    
+    Wait1 --> Increment1[Increment Retry Count]
+    Wait2 --> Increment2[Increment Retry Count]
+    Wait3 --> Increment3[Increment Retry Count]
+    
+    Increment1 --> Execute
+    Increment2 --> Execute
+    Increment3 --> Execute
+    
+    LogError --> Notify[Notify Monitoring System]
+    Notify --> End[End Operation]
+    Complete --> End
+    
+    style ErrorType fill:#ffcccc
+    style LogError fill:#ff9999
+    style Complete fill:#ccffcc
+```
+
+### Security Architecture
+
+```mermaid
+graph TB
+    subgraph "External Layer"
+        Internet[Internet]
+        Users[Users/API Clients]
+    end
+    
+    subgraph "Security Perimeter"
+        LB[Load Balancer]
+        WAF[Web Application Firewall]
+        RateLimit[Rate Limiter]
+    end
+    
+    subgraph "Application Layer"
+        API[API Server]
+        Auth[Authentication Middleware]
+        Validator[Input Validator]
+    end
+    
+    subgraph "Data Protection"
+        Encrypt[Encryption at Rest]
+        KeyStore[Key Management Service]
+        Secrets[Secrets Manager]
+    end
+    
+    subgraph "Blockchain Security"
+        Wallet[Hardware Wallet]
+        Signer[Transaction Signer]
+        NonceMgr[Nonce Manager]
+    end
+    
+    subgraph "Monitoring & Auditing"
+        Audit[Audit Logs]
+        Monitor[Security Monitoring]
+        Alerts[Alert System]
+    end
+    
+    Internet --> LB
+    Users --> LB
+    LB --> WAF
+    WAF --> RateLimit
+    RateLimit --> API
+    API --> Auth
+    Auth --> Validator
+    
+    API --> Encrypt
+    API --> KeyStore
+    KeyStore --> Secrets
+    
+    API --> Wallet
+    Wallet --> Signer
+    Signer --> NonceMgr
+    
+    API --> Audit
+    API --> Monitor
+    Monitor --> Alerts
+    
+    style WAF fill:#ffcccc
+    style Auth fill:#ffcccc
+    style Wallet fill:#ccffcc
+    style Secrets fill:#ffcccc
+```
+
+### Deployment Architecture
+
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        Browser[Web Browser]
+        Mobile[Mobile App]
+        API_Client[API Clients]
+    end
+    
+    subgraph "CDN & Edge"
+        CDN[CloudFlare CDN]
+        Edge[Edge Locations]
+    end
+    
+    subgraph "Load Balancing"
+        LB[Load Balancer]
+        Health[Health Checker]
+    end
+    
+    subgraph "Application Tier"
+        API1[API Server 1]
+        API2[API Server 2]
+        API3[API Server N]
+    end
+    
+    subgraph "Data Tier"
+        PG_Master[(PostgreSQL Master)]
+        PG_Replica[(PostgreSQL Replica)]
+        Redis_Cluster[(Redis Cluster)]
+    end
+    
+    subgraph "Blockchain Nodes"
+        ETH_Node[Ethereum RPC]
+        STX_Node[Stacks RPC]
+        Bridge_API[Circle Bridge API]
+    end
+    
+    subgraph "Monitoring Stack"
+        Prometheus[Prometheus]
+        Grafana[Grafana]
+        AlertManager[Alert Manager]
+    end
+    
+    Browser --> CDN
+    Mobile --> CDN
+    API_Client --> CDN
+    CDN --> Edge
+    Edge --> LB
+    
+    LB --> Health
+    Health --> API1
+    Health --> API2
+    Health --> API3
+    
+    API1 --> PG_Master
+    API2 --> PG_Master
+    API3 --> PG_Master
+    PG_Master --> PG_Replica
+    
+    API1 --> Redis_Cluster
+    API2 --> Redis_Cluster
+    API3 --> Redis_Cluster
+    
+    API1 --> ETH_Node
+    API1 --> STX_Node
+    API1 --> Bridge_API
+    API2 --> ETH_Node
+    API2 --> STX_Node
+    API2 --> Bridge_API
+    
+    API1 --> Prometheus
+    API2 --> Prometheus
+    API3 --> Prometheus
+    Prometheus --> Grafana
+    Prometheus --> AlertManager
+```
+
+### Price Aggregation Algorithm Flow
+
+```mermaid
+flowchart TD
+    Start[Price Collection Starts] --> Fetch[Fetch Prices from All DEXs]
+    
+    Fetch --> ETH_DEX1[Uniswap V3]
+    Fetch --> ETH_DEX2[Curve]
+    Fetch --> ETH_DEX3[Balancer]
+    Fetch --> STX_DEX1[ALEX]
+    Fetch --> STX_DEX2[Arkadiko]
+    Fetch --> STX_DEX3[Lydian]
+    
+    ETH_DEX1 --> Validate1{Validate Price}
+    ETH_DEX2 --> Validate2{Validate Price}
+    ETH_DEX3 --> Validate3{Validate Price}
+    STX_DEX1 --> Validate4{Validate Price}
+    STX_DEX2 --> Validate5{Validate Price}
+    STX_DEX3 --> Validate6{Validate Price}
+    
+    Validate1 -->|Valid| Weight1[Calculate Weight]
+    Validate2 -->|Valid| Weight2[Calculate Weight]
+    Validate3 -->|Valid| Weight3[Calculate Weight]
+    Validate4 -->|Valid| Weight4[Calculate Weight]
+    Validate5 -->|Valid| Weight5[Calculate Weight]
+    Validate6 -->|Valid| Weight6[Calculate Weight]
+    
+    Validate1 -->|Invalid| Discard1[Discard]
+    Validate2 -->|Invalid| Discard2[Discard]
+    Validate3 -->|Invalid| Discard3[Discard]
+    Validate4 -->|Invalid| Discard4[Discard]
+    Validate5 -->|Invalid| Discard5[Discard]
+    Validate6 -->|Invalid| Discard6[Discard]
+    
+    Weight1 --> Aggregate[Weighted Aggregation]
+    Weight2 --> Aggregate
+    Weight3 --> Aggregate
+    Weight4 --> Aggregate
+    Weight5 --> Aggregate
+    Weight6 --> Aggregate
+    
+    Aggregate --> Confidence[Calculate Confidence Score]
+    Confidence --> Outlier{Outlier Detection}
+    
+    Outlier -->|Pass| Final[Final Aggregated Price]
+    Outlier -->|Fail| ReAggregate[Re-aggregate without Outliers]
+    ReAggregate --> Final
+    
+    Final --> Cache[Store in Redis Cache]
+    Cache --> End[Return to Opportunity Detector]
+    
+    style Aggregate fill:#ccffcc
+    style Final fill:#ccffcc
+    style Outlier fill:#ffffcc
+```
+
+### Risk Management Decision Tree
+
+```mermaid
+flowchart TD
+    Start[Opportunity Detected] --> CheckProfit{Profit > Min Threshold?}
+    
+    CheckProfit -->|No| Reject1[Reject: Below Threshold]
+    CheckProfit -->|Yes| CheckSize{Trade Size < Max?}
+    
+    CheckSize -->|No| Reject2[Reject: Exceeds Max Size]
+    CheckSize -->|Yes| CheckDaily{Daily Exposure < Limit?}
+    
+    CheckDaily -->|No| Reject3[Reject: Daily Limit Reached]
+    CheckDaily -->|Yes| CheckConcurrent{Active Trades < Max?}
+    
+    CheckConcurrent -->|No| Queue[Add to Queue]
+    CheckConcurrent -->|Yes| CheckLiquidity{Sufficient Liquidity?}
+    
+    CheckLiquidity -->|No| Reject4[Reject: Insufficient Liquidity]
+    CheckLiquidity -->|Yes| CheckSlippage{Est. Slippage < Max?}
+    
+    CheckSlippage -->|No| Reject5[Reject: Slippage Too High]
+    CheckSlippage -->|Yes| CheckPriceStability{Price Stable?}
+    
+    CheckPriceStability -->|No| Reject6[Reject: Price Volatile]
+    CheckPriceStability -->|Yes| CheckGas{Gas Price Reasonable?}
+    
+    CheckGas -->|No| Wait[Wait for Lower Gas]
+    CheckGas -->|Yes| CheckBridge{Bridge Operational?}
+    
+    CheckBridge -->|No| Reject7[Reject: Bridge Down]
+    CheckBridge -->|Yes| CheckCircuitBreaker{Circuit Breaker OK?}
+    
+    CheckCircuitBreaker -->|No| Halt[Halt Trading]
+    CheckCircuitBreaker -->|Yes| Approve[Approve Trade]
+    
+    Approve --> Execute[Execute Trade]
+    Queue --> WaitForSlot[Wait for Slot]
+    WaitForSlot --> CheckConcurrent
+    
+    Wait --> CheckGas
+    Halt --> End[Halt All Trading]
+    Reject1 --> End
+    Reject2 --> End
+    Reject3 --> End
+    Reject4 --> End
+    Reject5 --> End
+    Reject6 --> End
+    Reject7 --> End
+    Execute --> End
+    
+    style Approve fill:#ccffcc
+    style Execute fill:#ccffcc
+    style Halt fill:#ffcccc
+    style Reject1 fill:#ffcccc
+    style Reject2 fill:#ffcccc
+    style Reject3 fill:#ffcccc
+    style Reject4 fill:#ffcccc
+    style Reject5 fill:#ffcccc
+    style Reject6 fill:#ffcccc
+    style Reject7 fill:#ffcccc
+```
+
+### Network Topology
+
+```mermaid
+graph LR
+    subgraph "Public Internet"
+        Users[Users]
+    end
+    
+    subgraph "Cloud Provider"
+        subgraph "VPC - Public Subnet"
+            LB[Load Balancer]
+            NAT[NAT Gateway]
+        end
+        
+        subgraph "VPC - Private Subnet"
+            subgraph "Application Subnet"
+                API1[API Server 1]
+                API2[API Server 2]
+            end
+            
+            subgraph "Data Subnet"
+                PG[(PostgreSQL)]
+                Redis[(Redis)]
+            end
+            
+            subgraph "Blockchain Subnet"
+                ETH_Proxy[Ethereum Proxy]
+                STX_Proxy[Stacks Proxy]
+            end
+        end
+        
+        subgraph "VPC - Management Subnet"
+            Bastion[Bastion Host]
+            Monitor[Monitoring Server]
+        end
+    end
+    
+    subgraph "External Services"
+        ETH_RPC[Ethereum RPC Nodes]
+        STX_RPC[Stacks RPC Nodes]
+        Circle[Circle Bridge API]
+    end
+    
+    Users --> LB
+    LB --> API1
+    LB --> API2
+    
+    API1 --> PG
+    API2 --> PG
+    API1 --> Redis
+    API2 --> Redis
+    
+    API1 --> ETH_Proxy
+    API1 --> STX_Proxy
+    API2 --> ETH_Proxy
+    API2 --> STX_Proxy
+    
+    ETH_Proxy --> ETH_RPC
+    STX_Proxy --> STX_RPC
+    API1 --> Circle
+    API2 --> Circle
+    
+    Bastion --> API1
+    Bastion --> API2
+    Monitor --> API1
+    Monitor --> API2
+    Monitor --> PG
+    Monitor --> Redis
+    
+    NAT --> Internet[Internet]
+    API1 --> NAT
+    API2 --> NAT
+```
+
 ## 💻 Technology Stack
 
 ### Backend

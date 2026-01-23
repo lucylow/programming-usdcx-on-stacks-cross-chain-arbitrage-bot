@@ -50,7 +50,7 @@ interface StacksContextType {
   isRefreshing: boolean
 }
 
-const StacksContext = createContext<StacksContextType | null>(null)
+export const StacksContext = createContext<StacksContextType | null>(null)
 
 export function useStacks() {
   const context = useContext(StacksContext)

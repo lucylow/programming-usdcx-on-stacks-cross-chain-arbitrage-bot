@@ -102,8 +102,12 @@ export default function Swap() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-darker via-dark to-darker">
-      <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-2xl mx-auto">
+    <div className="min-h-screen bg-background text-foreground relative">
+      {/* Background gradients */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,hsla(245,100%,64%,0.15),transparent_50%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,hsla(162,100%,42%,0.08),transparent_40%)]" />
+      
+      <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-2xl mx-auto relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -111,7 +115,7 @@ export default function Swap() {
         >
           {/* Header */}
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-brand to-accent bg-clip-text text-transparent mb-2">
+            <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-foreground via-foreground/90 to-foreground/70 bg-clip-text text-transparent mb-2">
               Swap Tokens
             </h1>
             <p className="text-muted-foreground">
@@ -120,8 +124,9 @@ export default function Swap() {
           </div>
 
           {/* Swap Card */}
-          <Card className="bg-dark/60 border-white/10 backdrop-blur-xl">
-            <CardHeader className="flex flex-row items-center justify-between">
+          <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <CardHeader className="relative flex flex-row items-center justify-between">
               <CardTitle>Swap</CardTitle>
               <Button
                 variant="ghost"
@@ -132,14 +137,14 @@ export default function Swap() {
                 <Settings className="w-4 h-4" />
               </Button>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="relative space-y-4">
               {/* Settings Panel */}
               {showSettings && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="p-4 bg-darker/60 rounded-lg border border-white/5"
+                  className="p-4 bg-card/50 rounded-lg border border-border/50"
                 >
                   <label className="text-sm font-medium mb-2 block">Slippage Tolerance</label>
                   <div className="flex gap-2">
@@ -265,7 +270,7 @@ export default function Swap() {
 
               {/* Exchange Rate Info */}
               {fromAmount && toAmount && (
-                <div className="p-4 bg-darker/60 rounded-lg border border-white/5 space-y-2">
+                <div className="p-4 bg-card/50 rounded-lg border border-border/50 space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Exchange Rate</span>
                     <span className="font-medium">
@@ -312,21 +317,24 @@ export default function Swap() {
 
           {/* Info Cards */}
           <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card className="bg-dark/60 border-white/10 backdrop-blur-xl">
-              <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-brand">0.1%</p>
+            <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:shadow-primary/20">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <CardContent className="relative p-4 text-center">
+                <p className="text-2xl font-bold text-primary">0.1%</p>
                 <p className="text-xs text-muted-foreground mt-1">Trading Fee</p>
               </CardContent>
             </Card>
-            <Card className="bg-dark/60 border-white/10 backdrop-blur-xl">
-              <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-accent">Instant</p>
+            <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-secondary/50 transition-all duration-300 hover:shadow-xl hover:shadow-secondary/20">
+              <div className="absolute inset-0 bg-gradient-to-br from-secondary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <CardContent className="relative p-4 text-center">
+                <p className="text-2xl font-bold text-secondary">Instant</p>
                 <p className="text-xs text-muted-foreground mt-1">Settlement</p>
               </CardContent>
             </Card>
-            <Card className="bg-dark/60 border-white/10 backdrop-blur-xl">
-              <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-brand">Cross-Chain</p>
+            <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:shadow-primary/20">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <CardContent className="relative p-4 text-center">
+                <p className="text-2xl font-bold text-primary">Cross-Chain</p>
                 <p className="text-xs text-muted-foreground mt-1">Supported</p>
               </CardContent>
             </Card>

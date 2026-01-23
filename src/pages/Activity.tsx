@@ -137,8 +137,12 @@ export default function Activity() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-darker via-dark to-darker">
-      <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+    <div className="min-h-screen bg-background text-foreground relative">
+      {/* Background gradients */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,hsla(245,100%,64%,0.15),transparent_50%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,hsla(162,100%,42%,0.08),transparent_40%)]" />
+      
+      <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -146,7 +150,7 @@ export default function Activity() {
         >
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-brand to-accent bg-clip-text text-transparent mb-2">
+            <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-foreground via-foreground/90 to-foreground/70 bg-clip-text text-transparent mb-2">
               Activity
             </h1>
             <p className="text-muted-foreground">
@@ -155,8 +159,9 @@ export default function Activity() {
           </div>
 
           {/* Filters */}
-          <Card className="bg-dark/60 border-white/10 backdrop-blur-xl mb-6">
-            <CardContent className="p-4">
+          <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 mb-6">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <CardContent className="relative p-4">
               <div className="flex flex-col gap-4">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -244,22 +249,23 @@ export default function Activity() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
               >
-                <Card className="bg-dark/60 border-white/10 backdrop-blur-xl hover:border-brand/30 transition-all">
-                  <CardContent className="p-6">
+                <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <CardContent className="relative p-6">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                       <div className="flex items-start gap-4 flex-1">
                         <div className={cn(
-                          "w-12 h-12 rounded-lg flex items-center justify-center",
-                          tx.type === "arbitrage" ? "bg-brand/20" :
-                          tx.type === "swap" ? "bg-accent/20" :
-                          "bg-muted/20"
+                          "w-12 h-12 rounded-lg flex items-center justify-center border",
+                          tx.type === "arbitrage" ? "bg-primary/10 border-primary/20" :
+                          tx.type === "swap" ? "bg-secondary/10 border-secondary/20" :
+                          "bg-muted/10 border-muted/20"
                         )}>
                           {tx.type === "arbitrage" ? (
-                            <ArrowUpRight className="w-6 h-6 text-brand" />
+                            <ArrowUpRight className="w-6 h-6 text-primary" />
                           ) : tx.type === "bridge" ? (
                             <ArrowDownRight className="w-6 h-6 text-muted-foreground" />
                           ) : (
-                            <ArrowUpRight className="w-6 h-6 text-accent" />
+                            <ArrowUpRight className="w-6 h-6 text-secondary" />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -309,8 +315,9 @@ export default function Activity() {
               </motion.div>
             ))}
             {filteredTransactions.length === 0 && (
-              <Card className="bg-dark/60 border-white/10 backdrop-blur-xl">
-                <CardContent className="p-12 text-center">
+              <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <CardContent className="relative p-12 text-center">
                   <p className="text-muted-foreground">No transactions found</p>
                 </CardContent>
               </Card>

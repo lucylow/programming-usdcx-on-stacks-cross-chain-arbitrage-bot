@@ -105,8 +105,12 @@ export default function Markets() {
   const totalLiquidity = markets.reduce((sum, m) => sum + m.liquidity, 0)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-darker via-dark to-darker">
-      <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+    <div className="min-h-screen bg-background text-foreground relative">
+      {/* Background gradients */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,hsla(245,100%,64%,0.15),transparent_50%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,hsla(162,100%,42%,0.08),transparent_40%)]" />
+      
+      <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -114,7 +118,7 @@ export default function Markets() {
         >
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-brand to-accent bg-clip-text text-transparent mb-2">
+            <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-foreground via-foreground/90 to-foreground/70 bg-clip-text text-transparent mb-2">
               Markets
             </h1>
             <p className="text-muted-foreground">
@@ -124,44 +128,54 @@ export default function Markets() {
 
           {/* Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <Card className="bg-dark/60 border-white/10 backdrop-blur-xl">
-              <CardContent className="p-6">
+            <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:shadow-primary/20">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <CardContent className="relative p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Total Volume (24h)</p>
                     <p className="text-2xl font-bold">${(totalVolume24h / 1000000).toFixed(2)}M</p>
                   </div>
-                  <BarChart3 className="w-8 h-8 text-brand" />
+                  <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+                    <BarChart3 className="w-6 h-6 text-primary" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
-            <Card className="bg-dark/60 border-white/10 backdrop-blur-xl">
-              <CardContent className="p-6">
+            <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-secondary/50 transition-all duration-300 hover:shadow-xl hover:shadow-secondary/20">
+              <div className="absolute inset-0 bg-gradient-to-br from-secondary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <CardContent className="relative p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Total Liquidity</p>
                     <p className="text-2xl font-bold">${(totalLiquidity / 1000000).toFixed(2)}M</p>
                   </div>
-                  <TrendingUp className="w-8 h-8 text-accent" />
+                  <div className="p-2 rounded-lg bg-secondary/10 border border-secondary/20">
+                    <TrendingUp className="w-6 h-6 text-secondary" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
-            <Card className="bg-dark/60 border-white/10 backdrop-blur-xl">
-              <CardContent className="p-6">
+            <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:shadow-primary/20">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <CardContent className="relative p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Active Markets</p>
                     <p className="text-2xl font-bold">{markets.length}</p>
                   </div>
-                  <ArrowUpRight className="w-8 h-8 text-brand" />
+                  <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+                    <ArrowUpRight className="w-6 h-6 text-primary" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
           </div>
 
           {/* Filters */}
-          <Card className="bg-dark/60 border-white/10 backdrop-blur-xl mb-6">
-            <CardContent className="p-4">
+          <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 mb-6">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <CardContent className="relative p-4">
               <div className="flex flex-col sm:flex-row gap-4">
                 <div className="flex-1 relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -200,15 +214,16 @@ export default function Markets() {
           </Card>
 
           {/* Markets Table */}
-          <Card className="bg-dark/60 border-white/10 backdrop-blur-xl">
-            <CardHeader>
+          <Card className="group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm hover:border-primary/50 transition-all duration-300">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <CardHeader className="relative">
               <CardTitle>Trading Pairs</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="relative">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-white/10">
+                    <tr className="border-b border-border/50">
                       <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Pair</th>
                       <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Price</th>
                       <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">24h Change</th>
@@ -225,7 +240,7 @@ export default function Markets() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.05 }}
-                        className="border-b border-white/5 hover:bg-dark/40 transition-colors"
+                        className="border-b border-border/50 hover:bg-card/50 transition-colors"
                       >
                         <td className="py-4 px-4">
                           <div className="flex items-center gap-2">
@@ -247,7 +262,7 @@ export default function Markets() {
                         <td className="text-right py-4 px-4">
                           <div className={cn(
                             "flex items-center justify-end gap-1",
-                            market.change24h >= 0 ? "text-accent" : "text-error"
+                            market.change24h >= 0 ? "text-secondary" : "text-destructive"
                           )}>
                             {market.change24h >= 0 ? (
                               <TrendingUp className="w-4 h-4" />
