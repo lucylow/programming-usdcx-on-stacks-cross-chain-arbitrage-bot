@@ -64,9 +64,19 @@ export function StacksWalletButton() {
 
   if (!isSignedIn || !walletInfo) {
     return (
-      <Button onClick={handleConnect} className="bg-primary hover:bg-primary/90">
-        <Wallet className="w-4 h-4 mr-2" />
-        Connect Stacks Wallet
+      <Button 
+        onClick={handleConnect} 
+        className="bg-gradient-to-r from-[#5546FF] to-[#9747FF] hover:from-[#4436EE] hover:to-[#8636EE] text-white font-medium"
+      >
+        <svg 
+          className="w-4 h-4 mr-2" 
+          viewBox="0 0 24 24" 
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+        </svg>
+        Connect Leather Wallet
       </Button>
     )
   }
