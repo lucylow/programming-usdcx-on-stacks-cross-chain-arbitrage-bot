@@ -40,7 +40,7 @@ export function BreadcrumbNav() {
     return null;
   }
 
-  const breadcrumbs = [
+  const breadcrumbs: Array<{ label: string; path: string; icon?: React.ElementType }> = [
     {
       label: "Home",
       path: "/",
@@ -52,7 +52,6 @@ export function BreadcrumbNav() {
       return {
         label,
         path: to,
-        isLast: index === pathnames.length - 1,
       };
     }),
   ];
@@ -67,7 +66,7 @@ export function BreadcrumbNav() {
                 <BreadcrumbItem>
                   {index === breadcrumbs.length - 1 ? (
                     <BreadcrumbPage className="flex items-center gap-1.5">
-                      {index === 0 && <crumb.icon className="w-4 h-4" />}
+                      {crumb.icon && <crumb.icon className="w-4 h-4" />}
                       <span className="font-medium">{crumb.label}</span>
                     </BreadcrumbPage>
                   ) : (
@@ -76,7 +75,7 @@ export function BreadcrumbNav() {
                         to={crumb.path}
                         className="flex items-center gap-1.5 hover:text-foreground transition-colors"
                       >
-                        {index === 0 && <crumb.icon className="w-4 h-4" />}
+                        {crumb.icon && <crumb.icon className="w-4 h-4" />}
                         <span>{crumb.label}</span>
                       </Link>
                     </BreadcrumbLink>

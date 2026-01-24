@@ -27,7 +27,7 @@ import {
   Coins,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { StacksWalletButton } from "../../../components/stacks/StacksWalletButton"
+import { StacksWalletButton } from "../stacks/StacksWalletButton"
 
 interface NavItem {
   label: string
