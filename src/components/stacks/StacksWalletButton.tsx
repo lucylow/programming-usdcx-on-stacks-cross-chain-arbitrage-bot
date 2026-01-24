@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useConnect } from "@stacks/connect-react"
+import { connect, disconnect as stacksDisconnect, isConnected, getLocalStorage } from "@stacks/connect"
 import { Wallet, LogOut, Copy, Check, ExternalLink, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -18,16 +18,34 @@ import { NetworkSwitcher } from "./NetworkSwitcher"
 import { toast } from "sonner"
 
 export function StacksWalletButton() {
-  const { doOpenAuth } = useConnect()
-  const { isSignedIn, walletInfo, network, disconnect, refreshBalances, isLoading, isRefreshing } = useStacks()
+  const { isSignedIn, walletInfo, network, disconnect, refreshBalances, isLoading, isRefreshing, onConnect } = useStacks()
   const { networkInfo } = useStacksNetwork()
   const [copied, setCopied] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(false)
 
-  const handleConnect = () => {
-    doOpenAuth()
+  const handleConnect = async () => {
+    setIsConnecting(true)
+    try {
+      // Use the new connect() API with Leather provider priority
+      const response = await connect({
+        approvedProviderIds: ['LeatherProvider'],
+      })
+      
+      if (response && response.addresses) {
+        toast.success("Wallet connected successfully!")
+        // Trigger callback to refresh wallet state
+        onConnect?.()
+      }
+    } catch (error) {
+      console.error("Failed to connect wallet:", error)
+      toast.error("Failed to connect wallet. Please try again.")
+    } finally {
+      setIsConnecting(false)
+    }
   }
 
   const handleDisconnect = () => {
+    stacksDisconnect()
     disconnect()
     toast.success("Wallet disconnected")
   }
@@ -66,17 +84,22 @@ export function StacksWalletButton() {
     return (
       <Button 
         onClick={handleConnect} 
+        disabled={isConnecting}
         className="bg-gradient-to-r from-[#5546FF] to-[#9747FF] hover:from-[#4436EE] hover:to-[#8636EE] text-white font-medium"
       >
-        <svg 
-          className="w-4 h-4 mr-2" 
-          viewBox="0 0 24 24" 
-          fill="currentColor"
-          aria-hidden="true"
-        >
-          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-        </svg>
-        Connect Leather Wallet
+        {isConnecting ? (
+          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+        ) : (
+          <svg 
+            className="w-4 h-4 mr-2" 
+            viewBox="0 0 24 24" 
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+          </svg>
+        )}
+        {isConnecting ? "Connecting..." : "Connect Leather Wallet"}
       </Button>
     )
   }

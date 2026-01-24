@@ -1,9 +1,9 @@
 "use client"
 import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react"
-import { Connect } from "@stacks/connect-react"
-import { userSession, APP_DETAILS, CONTRACTS } from "./config"
+import { isConnected, getLocalStorage, disconnect as stacksDisconnect } from "@stacks/connect"
 import { STACKS_TESTNET, STACKS_MAINNET, StacksNetwork } from "@stacks/network"
 import { principalCV } from "@stacks/transactions"
+import { CONTRACTS, APP_DETAILS } from "./config"
 
 export interface WalletInfo {
   mainnetAddress: string
@@ -38,7 +38,6 @@ interface StacksContextType {
   contracts: typeof CONTRACTS.testnet
   transactions: Transaction[]
   error: Error | null
-  connect: () => void
   disconnect: () => void
   switchNetwork: (network: "testnet" | "mainnet") => void
   refreshBalances: () => Promise<void>
@@ -48,6 +47,7 @@ interface StacksContextType {
   clearError: () => void
   isLoading: boolean
   isRefreshing: boolean
+  onConnect: () => void
 }
 
 export const StacksContext = createContext<StacksContextType | null>(null)
@@ -86,21 +86,48 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
   }
 
   const loadUserData = useCallback(() => {
-    if (!userSession.isUserSignedIn()) {
+    try {
+      // Use the new isConnected() and getLocalStorage() APIs
+      const connected = isConnected()
+      
+      if (!connected) {
+        setWalletInfo(null)
+        setIsSignedIn(false)
+        return
+      }
+
+      // Get addresses from localStorage (set by connect())
+      const storage = getLocalStorage()
+      
+      // Handle both array format and object format for addresses
+      let stxAddresses: Array<{ address: string; symbol?: string }> = []
+      
+      if (storage?.addresses) {
+        if (Array.isArray(storage.addresses)) {
+          stxAddresses = storage.addresses
+        } else if (storage.addresses.stx && Array.isArray(storage.addresses.stx)) {
+          stxAddresses = storage.addresses.stx
+        }
+      }
+      
+      // Find STX addresses
+      const mainnetAddr = stxAddresses.find((a) => a.address && !a.address.startsWith('ST'))
+      const testnetAddr = stxAddresses.find((a) => a.address && a.address.startsWith('ST'))
+      
+      // Fallback: try first available address
+      const anyAddr = stxAddresses[0]
+      
+      setWalletInfo({
+        mainnetAddress: mainnetAddr?.address || anyAddr?.address || "",
+        testnetAddress: testnetAddr?.address || anyAddr?.address || "",
+        username: undefined,
+      })
+      setIsSignedIn(true)
+    } catch (err) {
+      console.error("Error loading user data:", err)
       setWalletInfo(null)
       setIsSignedIn(false)
-      return
     }
-
-    const data = userSession.loadUserData()
-    const profile = data?.profile || {}
-
-    setWalletInfo({
-      mainnetAddress: profile?.stxAddress?.mainnet || "",
-      testnetAddress: profile?.stxAddress?.testnet || "",
-      username: profile?.name,
-    })
-    setIsSignedIn(true)
   }, [])
 
   // Balance cache to prevent excessive API calls
@@ -232,16 +259,9 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
   }, [walletInfo, network, apiUrl, contracts.usdcxToken])
 
   useEffect(() => {
-    // Handle pending sign-in redirect from wallet
-    if (userSession.isSignInPending()) {
-      userSession.handlePendingSignIn().then(() => {
-        loadUserData()
-        setIsLoading(false)
-      })
-    } else {
-      loadUserData()
-      setIsLoading(false)
-    }
+    // Check if already connected on mount
+    loadUserData()
+    setIsLoading(false)
   }, [loadUserData])
 
   useEffect(() => {
@@ -251,7 +271,7 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
   }, [isSignedIn, walletInfo, refreshBalances])
 
   const disconnect = useCallback(() => {
-    userSession.signUserOut(typeof window !== "undefined" ? window.location.origin : "/")
+    stacksDisconnect()
     setWalletInfo(null)
     setIsSignedIn(false)
     setTransactions([])
@@ -298,16 +318,10 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
     setError(null)
   }, [])
 
-  const authOptions = {
-    appDetails: APP_DETAILS,
-    userSession,
-    onFinish: () => {
-      loadUserData()
-    },
-    onCancel: () => {
-      // User closed wallet modal
-    },
-  }
+  // Callback for when wallet connects
+  const onConnect = useCallback(() => {
+    loadUserData()
+  }, [loadUserData])
 
   // Auto-refresh transaction statuses with improved error handling
   useEffect(() => {
@@ -394,7 +408,6 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
     contracts,
     transactions,
     error,
-    connect: () => {}, // Will be provided by Connect component
     disconnect,
     switchNetwork,
     refreshBalances,
@@ -404,11 +417,12 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
     clearError,
     isLoading,
     isRefreshing,
+    onConnect,
   }
 
   return (
     <StacksContext.Provider value={contextValue}>
-      <Connect authOptions={authOptions}>{children}</Connect>
+      {children}
     </StacksContext.Provider>
   )
 }

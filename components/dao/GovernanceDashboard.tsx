@@ -48,7 +48,7 @@ import { useStacks } from "@lib/stacks/StacksProvider"
 import { formatDistanceToNow } from "date-fns"
 
 export function GovernanceDashboard() {
-  const { isSignedIn, connect, walletInfo, network } = useStacks()
+  const { isSignedIn, walletInfo, network } = useStacks()
   const {
     proposals,
     tokenInfo,
@@ -455,12 +455,10 @@ export function GovernanceDashboard() {
 
       {/* Connect Wallet Prompt */}
       {!isSignedIn && (
-        <Card className="bg-card-bg border-white/10 p-6 text-center">
+        <Card className="bg-card border-border p-6 text-center">
           <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
           <p className="text-muted-foreground mb-4">Connect your wallet to participate in governance</p>
-          <Button onClick={connect} className="bg-brand hover:bg-brand-dark">
-            Connect Wallet
-          </Button>
+          <p className="text-sm text-muted-foreground">Use the Connect Leather Wallet button in the header</p>
         </Card>
       )}
     </div>
