@@ -30,6 +30,7 @@ const SwapPage = lazy(() => import("./pages/Swap"));
 const MarketsPage = lazy(() => import("./pages/Markets"));
 const ActivityPage = lazy(() => import("./pages/Activity"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
+const StackingPage = lazy(() => import("./pages/Stacking"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -180,6 +181,10 @@ const App = () => (
                         <SettingsPage />
                       </Layout>
                     }
+                  />
+                  <Route
+                    path="/stacking"
+                    element={<StackingPage />}
                   />
                   <Route
                     path="/docs"
