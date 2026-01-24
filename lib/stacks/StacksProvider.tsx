@@ -264,9 +264,18 @@ export function StacksProvider({ children, network: initialNetwork = "testnet" }
     setIsLoading(false)
   }, [loadUserData])
 
+  // Track if initial balance fetch has happened
+  const hasInitialBalanceRef = useRef(false)
+
   useEffect(() => {
-    if (isSignedIn && walletInfo) {
+    // Only fetch balances once when first signed in, not on every walletInfo change
+    if (isSignedIn && walletInfo && !hasInitialBalanceRef.current) {
+      hasInitialBalanceRef.current = true
       refreshBalances()
+    }
+    // Reset when signed out
+    if (!isSignedIn) {
+      hasInitialBalanceRef.current = false
     }
   }, [isSignedIn, walletInfo, refreshBalances])
 
