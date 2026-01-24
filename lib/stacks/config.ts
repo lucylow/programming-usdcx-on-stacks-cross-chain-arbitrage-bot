@@ -4,8 +4,8 @@ const appConfig = new AppConfig(["store_write", "publish_data"])
 export const userSession = new UserSession({ appConfig })
 
 export const APP_DETAILS = {
-  name: "Cross-Chain Arbitrage Bot",
-  icon: typeof window !== "undefined" ? `${window.location.origin}/logo.png` : "/logo.png",
+  name: "USDCx on Stacks",
+  icon: typeof window !== "undefined" ? `${window.location.origin}/favicon.ico` : "/favicon.ico",
 }
 
 // Contract addresses for different networks
