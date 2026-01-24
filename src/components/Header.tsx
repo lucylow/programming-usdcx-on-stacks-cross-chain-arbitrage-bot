@@ -4,7 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Bot, Menu, X, BarChart3, TrendingUp, BookOpen, Home, Lightbulb, Play, Sparkles } from "lucide-react";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
-import { StacksWalletButton } from "../../components/stacks/StacksWalletButton";
+import { StacksWalletButton } from "./stacks/StacksWalletButton";
 
 // Landing page section links (anchor links)
 const sectionLinks = [
