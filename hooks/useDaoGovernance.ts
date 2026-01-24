@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { useStacks } from "@lib/stacks/StacksProvider"
+import { useContractCall } from "@lib/stacks/hooks/useContractCall"
 import { CONTRACTS } from "@lib/stacks/config"
 import {
   fetchCallReadOnlyFunction,
@@ -58,6 +59,7 @@ interface UseDaoGovernanceReturn {
 
 export function useDaoGovernance(): UseDaoGovernanceReturn {
   const { isSignedIn, walletInfo, network: activeNetwork } = useStacks()
+  const { execute: executeContractCall, isLoading: isContractLoading } = useContractCall()
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [currentProposal, setCurrentProposal] = useState<Proposal | null>(null)
   const [tokenInfo, setTokenInfo] = useState<GovernanceTokenInfo | null>(null)
@@ -240,13 +242,36 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
       setIsLoading(true)
       setError(null)
 
-      // NOTE: This project currently doesn't expose a contract-call helper in StacksProvider.
-      // Keep the hook buildable by stubbing write methods until a contract-call integration is added.
-      setIsLoading(false)
-      setError("Contract calls are not configured in this build")
-      return null
+      try {
+        const txId = await executeContractCall({
+          contractAddress: DAO_ADDRESS,
+          contractName: DAO_NAME,
+          functionName: "create-proposal",
+          functionArgs: [
+            stringUtf8CV(title),
+            stringUtf8CV(description),
+            principalCV(targetContract),
+            stringAsciiCV(functionName),
+            listCV(calldata.map((d) => bufferCV(Buffer.from(d, "hex")))),
+          ],
+          postConditionMode: PostConditionMode.Deny,
+          onSuccess: () => {
+            refreshProposals()
+          },
+          onError: (err) => {
+            setError(err.message)
+          },
+        })
+        return txId
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to create proposal"
+        setError(message)
+        return null
+      } finally {
+        setIsLoading(false)
+      }
     },
-    [currentAddress],
+    [currentAddress, executeContractCall, refreshProposals],
   )
 
   // Vote on proposal
@@ -260,11 +285,30 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
       setIsLoading(true)
       setError(null)
 
-      setIsLoading(false)
-      setError("Contract calls are not configured in this build")
-      return null
+      try {
+        const txId = await executeContractCall({
+          contractAddress: DAO_ADDRESS,
+          contractName: DAO_NAME,
+          functionName: "vote",
+          functionArgs: [uintCV(proposalId), uintCV(support), uintCV(votingPower * 1e6)],
+          postConditionMode: PostConditionMode.Deny,
+          onSuccess: () => {
+            refreshProposals()
+          },
+          onError: (err) => {
+            setError(err.message)
+          },
+        })
+        return txId
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to vote"
+        setError(message)
+        return null
+      } finally {
+        setIsLoading(false)
+      }
     },
-    [currentAddress],
+    [currentAddress, executeContractCall, refreshProposals],
   )
 
   // Execute proposal
@@ -278,11 +322,30 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
       setIsLoading(true)
       setError(null)
 
-      setIsLoading(false)
-      setError("Contract calls are not configured in this build")
-      return null
+      try {
+        const txId = await executeContractCall({
+          contractAddress: DAO_ADDRESS,
+          contractName: DAO_NAME,
+          functionName: "execute-proposal",
+          functionArgs: [uintCV(proposalId)],
+          postConditionMode: PostConditionMode.Allow,
+          onSuccess: () => {
+            refreshProposals()
+          },
+          onError: (err) => {
+            setError(err.message)
+          },
+        })
+        return txId
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to execute proposal"
+        setError(message)
+        return null
+      } finally {
+        setIsLoading(false)
+      }
     },
-    [currentAddress],
+    [currentAddress, executeContractCall, refreshProposals],
   )
 
   // Activate proposal
@@ -296,11 +359,30 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
       setIsLoading(true)
       setError(null)
 
-      setIsLoading(false)
-      setError("Contract calls are not configured in this build")
-      return null
+      try {
+        const txId = await executeContractCall({
+          contractAddress: DAO_ADDRESS,
+          contractName: DAO_NAME,
+          functionName: "activate-proposal",
+          functionArgs: [uintCV(proposalId)],
+          postConditionMode: PostConditionMode.Deny,
+          onSuccess: () => {
+            refreshProposals()
+          },
+          onError: (err) => {
+            setError(err.message)
+          },
+        })
+        return txId
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to activate proposal"
+        setError(message)
+        return null
+      } finally {
+        setIsLoading(false)
+      }
     },
-    [currentAddress],
+    [currentAddress, executeContractCall, refreshProposals],
   )
 
   // Get vote
@@ -374,11 +456,30 @@ export function useDaoGovernance(): UseDaoGovernanceReturn {
       setIsLoading(true)
       setError(null)
 
-      setIsLoading(false)
-      setError("Contract calls are not configured in this build")
-      return null
+      try {
+        const txId = await executeContractCall({
+          contractAddress: DAO_ADDRESS,
+          contractName: TOKEN_NAME,
+          functionName: "delegate",
+          functionArgs: [principalCV(delegatee)],
+          postConditionMode: PostConditionMode.Deny,
+          onSuccess: () => {
+            refreshTokenInfo()
+          },
+          onError: (err) => {
+            setError(err.message)
+          },
+        })
+        return txId
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to delegate votes"
+        setError(message)
+        return null
+      } finally {
+        setIsLoading(false)
+      }
     },
-    [currentAddress],
+    [currentAddress, executeContractCall, refreshTokenInfo],
   )
 
   // Load data on mount and when address changes
