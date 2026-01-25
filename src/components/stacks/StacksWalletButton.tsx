@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { connect, disconnect as stacksDisconnect, isConnected, getLocalStorage } from "@stacks/connect"
+import { connect, disconnect as stacksDisconnect } from "@stacks/connect"
 import { Wallet, LogOut, Copy, Check, ExternalLink, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -12,28 +12,41 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { useStacks } from "@lib/stacks/StacksProvider"
 import { useStacksNetwork } from "@lib/stacks/hooks"
 import { NetworkSwitcher } from "./NetworkSwitcher"
 import { toast } from "sonner"
+
+const WALLET_OPTIONS = [
+  { id: 'LeatherProvider', name: 'Leather', icon: '🧥', description: 'by Trust Machines' },
+  { id: 'XverseProviders.BitcoinProvider', name: 'Xverse', icon: '✖️', description: 'Bitcoin & Stacks' },
+  { id: 'OkxWallet', name: 'OKX Wallet', icon: '🔵', description: 'Multi-chain wallet' },
+  { id: undefined, name: 'Other Wallets', icon: '👛', description: 'Any Stacks wallet' },
+]
 
 export function StacksWalletButton() {
   const { isSignedIn, walletInfo, network, disconnect, refreshBalances, isLoading, isRefreshing, onConnect } = useStacks()
   const { networkInfo } = useStacksNetwork()
   const [copied, setCopied] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
+  const [showWalletModal, setShowWalletModal] = useState(false)
 
-  const handleConnect = async () => {
+  const handleConnect = async (providerId?: string) => {
     setIsConnecting(true)
+    setShowWalletModal(false)
     try {
-      // Use the new connect() API with Leather provider priority
       const response = await connect({
-        approvedProviderIds: ['LeatherProvider'],
+        approvedProviderIds: providerId ? [providerId] : undefined,
       })
       
       if (response && response.addresses) {
         toast.success("Wallet connected successfully!")
-        // Trigger callback to refresh wallet state
         onConnect?.()
       }
     } catch (error) {
@@ -65,9 +78,7 @@ export function StacksWalletButton() {
     }
   }
 
-  const formatAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`
-  }
+  const formatAddress = (address: string) => `${address.slice(0, 6)}...${address.slice(-4)}`
 
   const currentAddress = network === "mainnet" ? walletInfo?.mainnetAddress : walletInfo?.testnetAddress
 
@@ -82,25 +93,43 @@ export function StacksWalletButton() {
 
   if (!isSignedIn || !walletInfo) {
     return (
-      <Button 
-        onClick={handleConnect} 
-        disabled={isConnecting}
-        className="bg-gradient-to-r from-[#5546FF] to-[#9747FF] hover:from-[#4436EE] hover:to-[#8636EE] text-white font-medium"
-      >
-        {isConnecting ? (
-          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-        ) : (
-          <svg 
-            className="w-4 h-4 mr-2" 
-            viewBox="0 0 24 24" 
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-          </svg>
-        )}
-        {isConnecting ? "Connecting..." : "Connect Leather Wallet"}
-      </Button>
+      <>
+        <Button 
+          onClick={() => setShowWalletModal(true)} 
+          disabled={isConnecting}
+          className="bg-gradient-to-r from-[#5546FF] to-[#9747FF] hover:from-[#4436EE] hover:to-[#8636EE] text-white font-medium"
+        >
+          {isConnecting ? (
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+          ) : (
+            <Wallet className="w-4 h-4 mr-2" />
+          )}
+          {isConnecting ? "Connecting..." : "Connect Wallet"}
+        </Button>
+
+        <Dialog open={showWalletModal} onOpenChange={setShowWalletModal}>
+          <DialogContent className="sm:max-w-md bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="text-center">Connect a Wallet</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-3 py-4">
+              {WALLET_OPTIONS.map((wallet) => (
+                <button
+                  key={wallet.name}
+                  onClick={() => handleConnect(wallet.id)}
+                  className="flex items-center gap-4 p-4 rounded-lg border border-border bg-background hover:bg-accent hover:border-primary transition-all text-left"
+                >
+                  <span className="text-2xl">{wallet.icon}</span>
+                  <div>
+                    <p className="font-medium">{wallet.name}</p>
+                    <p className="text-xs text-muted-foreground">{wallet.description}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </>
     )
   }
 
