@@ -26,6 +26,8 @@ import { logger } from "../utils/logger"
 import { retry } from "../utils/retry"
 import { BlockchainError, getErrorMessage } from "../utils/errors"
 import type { NetworkConfig } from "../config/types"
+import { getConnectionHealthMonitor, ConnectionHealthMonitor } from "./connectionHealthMonitor"
+import { getTransactionQueue, TransactionQueue } from "./transactionQueue"
 
 export interface StacksTransactionOptions {
   contractAddress: string
@@ -71,12 +73,19 @@ export class StacksClient {
   private privateKey: string
   private address: string
   private apiUrl: string
+  private healthMonitor: ConnectionHealthMonitor
+  private transactionQueue: TransactionQueue
 
   constructor(config: NetworkConfig) {
     this.networkType = (config.network as "mainnet" | "testnet") || "testnet"
     this.network = this.networkType === "mainnet" ? new StacksMainnet() : new StacksTestnet()
     this.privateKey = config.privateKey
     this.apiUrl = config.rpcUrl || this.network.coreApiUrl
+
+    // Initialize health monitor and transaction queue
+    this.healthMonitor = getConnectionHealthMonitor()
+    this.healthMonitor.initialize(this.networkType, config.rpcUrl ? [config.rpcUrl] : undefined)
+    this.transactionQueue = getTransactionQueue()
 
     // Derive address from private key
     try {
@@ -95,6 +104,55 @@ export class StacksClient {
     }
   }
 
+  /**
+   * Get the current best API URL (with failover support)
+   */
+  private getActiveApiUrl(): string {
+    return this.healthMonitor.getCurrentUrl() || this.apiUrl
+  }
+
+  /**
+   * Get connection health status
+   */
+  getConnectionHealth(): ReturnType<ConnectionHealthMonitor["getStatus"]> {
+    return this.healthMonitor.getStatus()
+  }
+
+  /**
+   * Get transaction queue statistics
+   */
+  getQueueStats(): ReturnType<TransactionQueue["getStats"]> {
+    return this.transactionQueue.getStats()
+  }
+
+  /**
+   * Queue a transaction for processing
+   */
+  queueTransaction(params: {
+    contractAddress: string
+    contractName: string
+    functionName: string
+    functionArgs: ClarityValue[]
+    priority?: "low" | "medium" | "high" | "urgent"
+    metadata?: Record<string, unknown>
+  }): string {
+    return this.transactionQueue.enqueue({
+      contractAddress: params.contractAddress,
+      contractName: params.contractName,
+      functionName: params.functionName,
+      functionArgs: params.functionArgs as unknown[],
+      priority: params.priority,
+      metadata: params.metadata,
+    })
+  }
+
+  /**
+   * Subscribe to transaction status updates
+   */
+  subscribeToTransaction(queueId: string, callback: (tx: { state: string; txId?: string; error?: string }) => void): () => void {
+    return this.transactionQueue.subscribe(queueId, callback)
+  }
+
   private nonceCache: { nonce: number; timestamp: number } | null = null
   private readonly NONCE_CACHE_TTL = 5000 // 5 seconds
 
@@ -111,7 +169,7 @@ export class StacksClient {
     }
 
     try {
-      const response = await fetch(`${this.apiUrl}/v2/accounts/${this.address}?proof=0`)
+      const response = await fetch(`${this.getActiveApiUrl()}/v2/accounts/${this.address}?proof=0`)
       if (!response.ok) {
         throw new Error(`Failed to fetch nonce: ${response.statusText}`)
       }
@@ -155,7 +213,7 @@ export class StacksClient {
     }
 
     try {
-      const response = await fetch(`${this.apiUrl}/v2/accounts/${this.address}?proof=0`)
+      const response = await fetch(`${this.getActiveApiUrl()}/v2/accounts/${this.address}?proof=0`)
       if (!response.ok) {
         throw new Error(`Failed to fetch balance: ${response.statusText}`)
       }
@@ -178,7 +236,7 @@ export class StacksClient {
    */
   private async getFeeRate(): Promise<number> {
     try {
-      const response = await fetch(`${this.apiUrl}/v2/fees/transfer`)
+      const response = await fetch(`${this.getActiveApiUrl()}/v2/fees/transfer`)
       if (!response.ok) {
         throw new Error(`Failed to fetch fee rate: ${response.statusText}`)
       }
@@ -322,7 +380,7 @@ export class StacksClient {
       })
 
       const response = await fetch(
-        `${this.apiUrl}/v2/contracts/call-read/${options.contractAddress}/${options.contractName}/${options.functionName}`,
+        `${this.getActiveApiUrl()}/v2/contracts/call-read/${options.contractAddress}/${options.contractName}/${options.functionName}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -392,7 +450,7 @@ export class StacksClient {
    */
   async getTransactionStatus(txId: string): Promise<TransactionStatus> {
     try {
-      const response = await fetch(`${this.apiUrl}/extended/v1/tx/${txId}`)
+      const response = await fetch(`${this.getActiveApiUrl()}/extended/v1/tx/${txId}`)
       
       if (!response.ok) {
         throw new Error(`Failed to fetch transaction: ${response.statusText}`)
