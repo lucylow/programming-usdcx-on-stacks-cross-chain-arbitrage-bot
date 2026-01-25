@@ -1,53 +1,68 @@
-# Cross-Chain Arbitrage Bot: USDCx on Stacks
+<div align="center">
+
+# 🔄 USDCx on Stacks
+
+### Cross-Chain Arbitrage Bot & DeFi Platform
+
+[![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-usdcx--on--stacks.lovable.app-blue?style=for-the-badge)](https://usdcx-on-stacks.lovable.app)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/React-18.3-blue.svg)](https://reactjs.org/)
-[![Status](https://img.shields.io/badge/Status-Production%20Ready-success.svg)]()
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-18.3-61DAFB.svg?logo=react&logoColor=white)](https://reactjs.org/)
+[![Stacks](https://img.shields.io/badge/Stacks-Blockchain-5546FF.svg?logo=stacks&logoColor=white)](https://www.stacks.co/)
+[![Leather](https://img.shields.io/badge/Leather_Wallet-Integrated-FF5500.svg)](https://leather.io/)
 
-> **🚀 Production-ready cross-chain arbitrage bot** that automatically detects and executes profitable trading opportunities between Ethereum and Stacks blockchains using USDC/USDCx. Features real-time price monitoring, intelligent opportunity detection, automated execution, and comprehensive risk management.
+<br />
 
-**Key Highlights:**
-- ⚡ **Sub-second price monitoring** across 6+ DEXs
-- 🤖 **Automated execution** with intelligent risk management
-- 🌉 **Circle xReserve bridge** integration
-- 📊 **Real-time dashboard** with analytics
-- 🛡️ **Production-grade** security and error handling
+**Production-ready cross-chain arbitrage bot** leveraging price differences between **Ethereum** and **Stacks** blockchains using USDC/USDCx via Circle's xReserve bridge.
 
-### Project Status
+[Live Demo](https://usdcx-on-stacks.lovable.app) • [Documentation](#-documentation) • [Quick Start](#-quick-start)
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Core Engine | ✅ Production Ready | Fully functional arbitrage engine |
-| Bridge Integration | ✅ Production Ready | Circle xReserve fully integrated |
-| Frontend Dashboard | ✅ Production Ready | React dashboard with real-time updates |
-| Smart Contracts | ✅ Deployed | Contracts on both Ethereum and Stacks |
-| API | ✅ Production Ready | RESTful API with comprehensive endpoints |
-| Documentation | ✅ Complete | Comprehensive docs and guides |
-| Testing | 🟡 In Progress | Core functionality tested, expanding coverage |
-| WebSocket Support | 🔜 Planned | Real-time updates via WebSocket |
+</div>
 
-## Table of Contents
+---
 
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Technology Stack](#technology-stack)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [API Documentation](#api-documentation)
-- [Smart Contracts](#smart-contracts)
-- [Arbitrage Strategy](#arbitrage-strategy)
-- [Risk Management](#risk-management)
-- [Performance Metrics](#performance-metrics)
-- [Security](#security)
-- [Deployment](#deployment)
-- [Monitoring](#monitoring)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
+## ✨ Highlights
+
+| Feature | Description |
+|---------|-------------|
+| ⚡ **Sub-second Monitoring** | Real-time price feeds from 6+ DEXs across chains |
+| 🤖 **Automated Execution** | Intelligent trade execution with risk management |
+| 🌉 **Circle xReserve Bridge** | Native cross-chain USDC transfers |
+| 🥩 **STX Stacking (PoX-4)** | Earn Bitcoin rewards by stacking STX tokens |
+| 👛 **Leather Wallet** | Seamless Stacks wallet integration |
+| 📊 **Live Dashboard** | Real-time analytics and transaction history |
+| 🛡️ **Production-Grade** | Connection health monitoring, auto-failover, retry logic |
+
+---
+
+## 📋 Project Status
+
+| Component | Status | Description |
+|-----------|:------:|-------------|
+| Arbitrage Engine | ✅ | Multi-DEX price aggregation & execution |
+| Bridge Integration | ✅ | Circle xReserve deposit/withdrawal flows |
+| Frontend Dashboard | ✅ | React + Vite with Framer Motion animations |
+| STX Stacking | ✅ | PoX-4 stacking with BTC rewards estimation |
+| Leather Wallet | ✅ | @stacks/connect v8.x integration |
+| Smart Contracts | ✅ | Clarity contracts deployed on Stacks |
+| Backend Services | ✅ | Session management, TX queue, health monitoring |
+| DAO Governance | ✅ | Proposal creation, voting, delegation |
+
+---
+
+## 📖 Table of Contents
+
+- [Quick Start](#-quick-start)
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [Technology Stack](#-technology-stack)
+- [Smart Contracts](#-smart-contracts)
+- [API Documentation](#-api-documentation)
+- [Configuration](#-configuration)
+- [Deployment](#-deployment)
+- [Contributing](#-contributing)
+- [License](#-license)
 
 ## 📖 Overview
 
